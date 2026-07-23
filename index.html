@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clean Detailed — Sistema de Evaluación</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:14px;background:#f0f0f0;color:#111;min-height:100vh}
+:root{--orange:#F15A22;--dark:#1A1A1A;--green:#3B6D11;--amber:#BA7517;--red:#A32D2D;--border:#ccc;--radius:8px}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1A1A1A}
+.login-card{background:#fff;border-radius:16px;padding:36px 32px;width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center}
+.pin-input{width:100%;text-align:center;font-size:28px;letter-spacing:8px;padding:12px;border:2px solid var(--border);border-radius:10px;font-family:Arial,sans-serif;color:#111}
+.pin-input:focus{outline:none;border-color:var(--orange)}
+.login-btn{width:100%;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
+.login-error{color:#A32D2D;font-size:13px;display:none}
+.level-badge{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700}
+.badge-coord{background:#E6F1FB;color:#0C447C}
+.badge-admin{background:#EAF3DE;color:#27500A}
+.app{display:none;flex-direction:column;min-height:100vh}
+.topbar{background:#1A1A1A;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.week-badge{font-size:11px;color:#ccc;background:#2b2b2b;border:1px solid #444;border-radius:6px;padding:3px 10px}
+.logout-btn{background:none;border:1px solid #444;color:#aaa;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:Arial,sans-serif}
+.tabs{display:flex;background:#fff;border-bottom:2px solid #eee;padding:0 20px;overflow-x:auto}
+.tab{padding:11px 16px;font-size:13px;cursor:pointer;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;font-family:Arial,sans-serif;font-weight:500;white-space:nowrap}
+.tab.active{color:var(--orange);border-bottom-color:var(--orange)}
+.tab.admin-tab{color:#3B6D11}
+.tab.admin-tab.active{color:#3B6D11;border-bottom-color:#3B6D11}
+.content{max-width:900px;margin:0 auto;padding:20px;flex:1}
+.form-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:16px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-group{display:flex;flex-direction:column;gap:6px}
+.form-group label{font-size:11px;color:#555;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+select,input[type=text],input[type=date],input[type=password],input[type=number],textarea{font-family:Arial,sans-serif;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:#111;width:100%}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--orange)}
+.section-label{font-size:11px;font-weight:700;color:#888;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+.svc-btn{padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:#fff;color:#555;font-size:12px;cursor:pointer;font-family:Arial,sans-serif;font-weight:500;transition:all .15s}
+.svc-btn.selected{background:var(--orange);color:#fff;border-color:var(--orange);font-weight:700}
+.svc-tag{font-size:11px;background:#F0F0F0;color:#444;padding:2px 8px;border-radius:10px;font-weight:600;display:inline-block}
+.svc-tags{display:flex;flex-wrap:wrap;gap:4px}
+.tech-btn{padding:6px 14px;border-radius:20px;border:2px solid transparent;color:#fff;font-size:12px;cursor:pointer;font-family:Arial,sans-serif;font-weight:700;transition:all .15s;opacity:.5}
+.tech-btn.selected{opacity:1;transform:scale(1.05)}
+.radio-group{display:flex;flex-direction:column;gap:6px;padding:4px 0}
+.radio-item{display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;border-radius:6px;border:1px solid #eee;transition:all .15s}
+.radio-item:hover{background:#f9f9f9}
+.radio-item.selected-radio{background:#FFF0EB;border-color:var(--orange)}
+.radio-dot{width:18px;height:18px;border-radius:50%;border:2px solid #ccc;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.radio-item.selected-radio .radio-dot{border-color:var(--orange);background:var(--orange)}
+.radio-item.selected-radio .radio-dot::after{content:'';width:6px;height:6px;border-radius:50%;background:#fff}
+.chk-items{display:flex;flex-direction:column;gap:4px;padding:4px 0}
+.chk-item{display:flex;align-items:center;gap:10px;cursor:pointer;padding:6px 8px;border-radius:6px}
+.chk-item:hover{background:#f5f5f5}
+.chk-box{width:18px;height:18px;border-radius:4px;border:2px solid #ccc;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.chk-box.checked{background:var(--green);border-color:var(--green)}
+.chk-box.checked::after{content:'✓';color:#fff;font-size:11px;font-weight:700}
+.dim-section{display:flex;flex-direction:column;gap:6px}
+.dim-header{font-size:13px;font-weight:700;color:#333;display:flex;align-items:center;gap:6px;padding:8px 0 4px;border-bottom:1px solid #eee}
+.save-btn{background:var(--orange);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;align-self:flex-end}
+.secondary-btn{background:#fff;color:#555;border:1px solid var(--border);border-radius:8px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:Arial,sans-serif}
+.hist-card{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:10px}
+.hist-header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}
+.hist-header:hover{background:#fafafa}
+.hist-svc{font-size:14px;font-weight:700;color:#111}
+.hist-meta{font-size:11px;color:#888;margin-top:2px}
+.hist-body{padding:14px 16px;border-top:1px solid #eee;display:flex;flex-direction:column;gap:10px}
+.pill{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700}
+.pill-ok{background:#EAF3DE;color:#27500A}
+.pill-warn{background:#FAEEDA;color:#633806}
+.pill-bad{background:#FCEBEB;color:#791F1F}
+.pill-neutral{background:#F0F0F0;color:#555}
+.score-pill{font-size:12px;padding:4px 12px;border-radius:20px;font-weight:700;white-space:nowrap}
+.note-box{background:#FAFAFA;border:1px solid #eee;border-radius:6px;padding:10px 12px;font-size:13px;color:#444;font-style:italic;line-height:1.5}
+.note-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.del-btn{background:none;border:1px solid #ddd;color:#A32D2D;cursor:pointer;padding:4px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif}
+.team-tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.tag-solo{background:#E6F1FB;color:#0C447C}
+.tag-duo{background:#FAEEDA;color:#633806}
+.tag-trio{background:#EAF3DE;color:#27500A}
+.vehicle-tag{display:inline-flex;align-items:center;gap:4px;background:#F0F0F0;border-radius:10px;padding:2px 8px;font-size:11px;color:#444;font-weight:600}
+.tech-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.equipo-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px}
+.equipo-row{display:flex;align-items:center;justify-content:space-around;flex-wrap:wrap;gap:16px}
+.equipo-stat{text-align:center}
+.equipo-num{font-size:28px;font-weight:700;color:#111}
+.equipo-lbl{font-size:11px;color:#888;margin-top:2px}
+.resumen-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:12px}
+.res-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:4px}
+.res-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff}
+.res-name{font-size:14px;font-weight:700;color:#111;margin-top:8px}
+.res-score{font-size:24px;font-weight:700}
+.res-sub{font-size:11px;color:#888}
+.res-stats{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.res-stat{font-size:11px;color:#666;background:#f5f5f5;padding:2px 8px;border-radius:10px}
+.res-bar-wrap{height:5px;background:#eee;border-radius:3px;margin-top:8px;overflow:hidden}
+.res-bar{height:100%;border-radius:3px}
+.svc-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.svc-table th{background:#2b2b2b;color:var(--orange);padding:7px 10px;font-size:11px;font-weight:700;text-align:left}
+.svc-table td{padding:7px 10px;border-bottom:1px solid #eee;color:#333;vertical-align:middle}
+.svc-table tr:last-child td{border-bottom:none}
+.svc-table tr:nth-child(even) td{background:#f9f9f9}
+.techs-manager{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.tech-row-mgr{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #eee;gap:10px}
+.tech-row-mgr:last-child{border-bottom:none}
+.tech-color-dot{width:20px;height:20px;border-radius:50%;flex-shrink:0}
+.tech-name-input{font-size:14px;color:#111;background:transparent;border:none;outline:none;flex:1;font-family:Arial,sans-serif;padding:2px 4px;border-radius:4px}
+.add-tech-row{display:flex;gap:8px;margin-top:12px}
+.add-tech-row input{flex:1}
+.add-btn{background:var(--orange);color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
+.com-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.com-tab{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:#fff;color:#555;font-size:12px;cursor:pointer;font-family:Arial,sans-serif;font-weight:600}
+.com-input{width:80px;text-align:center;font-size:13px;padding:5px 6px;border:1px solid #ddd;border-radius:5px;font-family:Arial,sans-serif}
+.com-input:focus{outline:none;border-color:var(--orange)}
+.com-table{width:100%;border-collapse:collapse;font-size:13px}
+.com-table th{background:#1A1A1A;color:#fff;padding:8px 10px;font-size:11px;font-weight:700;text-align:left}
+.com-table th:not(:first-child){text-align:center}
+.com-table td{padding:7px 8px;border-bottom:1px solid #eee;vertical-align:middle}
+.com-table tr:nth-child(even) td{background:#f9f9f9}
+.com-resumen-card{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:10px}
+.com-resumen-header{background:#1A1A1A;padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
+.com-resumen-name{font-size:14px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px}
+.com-total-badge{font-size:16px;font-weight:700;padding:4px 14px;border-radius:20px;background:#EAF3DE;color:#27500A}
+.com-detail-row{padding:8px 16px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;font-size:13px}
+.com-detail-row:last-child{border-bottom:none}
+.com-amount{font-weight:700;color:#3B6D11}
+.proyeccion-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px}
+.proy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:12px}
+.proy-item{background:#f7f7f7;border-radius:8px;padding:14px;text-align:center}
+.proy-num{font-size:22px;font-weight:700;color:#3B6D11}
+.proy-lbl{font-size:11px;color:#888;margin-top:4px}
+.pin-settings{background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px}
+.pin-row{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.pin-row label{font-size:13px;font-weight:600;color:#333;min-width:160px}
+.pin-row input{max-width:140px}
+.stats-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:14px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.stats-item{background:#f7f7f7;border-radius:8px;padding:12px;text-align:center}
+.stats-num{font-size:24px;font-weight:700;color:#111}
+.stats-lbl{font-size:11px;color:#888;margin-top:3px}
+.stats-table{width:100%;border-collapse:collapse;font-size:13px}
+.stats-table th{background:#2b2b2b;color:var(--orange);padding:7px 10px;font-size:11px;font-weight:700;text-align:left}
+.stats-table th:last-child{text-align:center}
+.stats-table td{padding:7px 10px;border-bottom:1px solid #eee;color:#333}
+.stats-table td:last-child{text-align:center;font-weight:700}
+.stats-table tr:last-child td{border-bottom:none}
+.stats-table tr:nth-child(even) td{background:#f9f9f9}
+.month-btn{padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:#fff;color:#555;font-size:12px;cursor:pointer;font-family:Arial,sans-serif;font-weight:500}
+.month-btn.active{background:var(--orange);color:#fff;border-color:var(--orange);font-weight:700}
+.empty-state{text-align:center;padding:40px;color:#aaa;font-size:14px}
+.alert-success{background:#EAF3DE;color:#27500A;border:1px solid #C0DD97;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:600;margin-bottom:12px;display:none}
+.readonly-notice{background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:8px 14px;font-size:12px;color:#795548;margin-bottom:12px}
+.loading{text-align:center;padding:40px;color:#888;font-size:14px}
+.sync-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:#EAF3DE;color:#27500A;font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="login-wrap" id="login-screen">
+  <div class="login-card">
+    <img src="https://i.imgur.com/placeholder.png" id="logo-img" alt="Clean Detailed" style="height:72px;width:auto;object-fit:contain;border-radius:8px;display:none">
+    <div style="width:52px;height:52px;background:var(--orange);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff" id="logo-placeholder">✦</div>
+    <div>
+      <div style="font-size:17px;font-weight:700;color:#111">Clean Detailed Studio</div>
+      <div style="font-size:11px;font-weight:700;color:#888;letter-spacing:.1em;text-transform:uppercase;margin-top:4px">Sistema de Evaluación de Servicios</div>
+    </div>
+    <input class="pin-input" type="password" id="pin-input" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="login-error">PIN incorrecto. Intenta de nuevo.</div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:28px;height:28px;background:var(--orange);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff">✦</div>
+      <div>
+        <div style="color:#fff;font-size:13px;font-weight:700">Clean Detailed Studio</div>
+        <div style="color:#888;font-size:10px">Evaluación de servicios</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="user-badge" class="level-badge"></span>
+      <span class="sync-badge">🔴 Sin conexión</span>
+      <div class="week-badge" id="week-label"></div>
+      <button class="logout-btn" onclick="logout()">Cerrar sesión</button>
+    </div>
+  </div>
+  <div class="tabs" id="tabs-bar"></div>
+  <div class="content">
+    <div class="alert-success" id="save-alert">✓ Evaluación guardada</div>
+
+    <div id="tab-registro" style="display:none">
+      <div id="readonly-notice" class="readonly-notice" style="display:none">
+        👁 Modo coordinador — puedes registrar servicios y notas.
+      </div>
+      <div class="form-card">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Vehículo</label>
+            <input type="text" id="f-vehicle" placeholder="Ej. Honda Civic gris">
+          </div>
+          <div class="form-group">
+            <label>Fecha</label>
+            <input type="date" id="f-date">
+          </div>
+        </div>
+        <div class="form-group" style="position:relative">
+          <label>Servicio(s) realizado(s)</label>
+          <div id="svc-dropdown-trigger" onclick="toggleSvcDropdown()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:space-between;min-height:38px;user-select:none;">
+            <div id="svc-trigger-label" style="font-size:13px;color:#888">Selecciona uno o más servicios...</div>
+            <span style="color:#888;font-size:12px">▼</span>
+          </div>
+          <div id="svc-dropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:200;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:280px;overflow-y:auto;margin-top:2px;">
+            <div id="svc-selector"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Técnico(s)</label>
+          <div class="tech-selector" id="tech-selector" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+        <div class="form-group">
+          <label>Notas del supervisor</label>
+          <textarea id="f-notes" rows="2" placeholder="Ej: Saul hizo el interior, Jose Daniel el exterior..."></textarea>
+        </div>
+        <div style="border-top:1px solid #eee;padding-top:16px;display:flex;flex-direction:column;gap:16px">
+          <div class="section-label">Evaluación</div>
+          <div class="dim-section">
+            <div class="dim-header">⏱ Tiempo</div>
+            <div class="radio-group">
+              <div class="radio-item" onclick="selectTiempo('ok')" id="radio-ok"><div class="radio-dot"></div><span style="font-size:13px">Servicio completado dentro del tiempo estimado</span></div>
+              <div class="radio-item" onclick="selectTiempo('delay')" id="radio-delay"><div class="radio-dot"></div><span style="font-size:13px">Servicio fuera de tiempo sin sacrificar calidad</span></div>
+            </div>
+          </div>
+          <div class="dim-section"><div class="dim-header">⭐ Calidad</div><div class="chk-items" id="chk-calidad"></div></div>
+          <div class="dim-section"><div class="dim-header">✅ Proceso</div><div class="chk-items" id="chk-proceso"></div></div>
+        </div>
+        <button class="save-btn" onclick="saveRecord()">💾 Guardar evaluación</button>
+      </div>
+    </div>
+
+    <div id="tab-historial" style="display:none"><div id="hist-list"></div></div>
+    <div id="tab-estadisticas" style="display:none"><div id="stats-content"></div></div>
+    <div id="tab-resumen" style="display:none">
+      <div class="section-label">Resumen del equipo esta semana</div>
+      <div class="equipo-card" id="equipo-card"></div>
+      <div class="section-label" style="margin-top:20px">Por técnico</div>
+      <div class="resumen-grid" id="resumen-grid"></div>
+      <div class="section-label" style="margin-top:24px">Servicios esta semana</div>
+      <div id="svc-by-person"></div>
+    </div>
+    <div id="tab-tecnicos" style="display:none">
+      <div class="section-label">Equipo de trabajo</div>
+      <div class="techs-manager" id="techs-manager"></div>
+      <div class="add-tech-row"><input type="text" id="new-tech-input" placeholder="Nombre del técnico..."><button class="add-btn" onclick="addTech()">+ Agregar</button></div>
+    </div>
+    <div id="tab-comisiones" style="display:none">
+      <div class="section-label">Comisiones por técnico</div>
+      <p style="font-size:13px;color:#666;margin-bottom:10px">Selecciona el técnico y define su comisión. Pon $0 si no aplica.</p>
+      <div class="com-tabs" id="com-tabs"></div>
+      <div class="form-card" style="margin-bottom:20px">
+        <div style="overflow-x:auto"><table class="com-table" id="com-table"></table></div>
+        <button class="save-btn" onclick="saveComisiones()">💾 Guardar comisiones</button>
+      </div>
+      <div class="section-label">Resumen de comisiones esta semana</div>
+      <div id="com-resumen"></div>
+      <div class="proyeccion-card">
+        <div class="section-label" style="margin-bottom:0">Proyección mensual</div>
+        <p style="font-size:12px;color:#888;margin-top:4px">Estimado × 4 semanas</p>
+        <div class="proy-grid" id="proy-grid"></div>
+      </div>
+    </div>
+    <div id="tab-config" style="display:none">
+      <div class="section-label">Cambiar PINs</div>
+      <div class="pin-settings">
+        <div class="pin-row"><label>🔵 PIN Coordinador</label><input type="password" id="pin-coord-new" placeholder="Nuevo PIN" maxlength="6"><button class="secondary-btn" onclick="savePin('coord')">Guardar</button></div>
+        <div class="pin-row"><label>🟢 PIN Admin / CEO</label><input type="password" id="pin-admin-new" placeholder="Nuevo PIN" maxlength="6"><button class="secondary-btn" onclick="savePin('admin')">Guardar</button></div>
+        <p style="font-size:12px;color:#aaa;margin-top:8px">El PIN actual no se muestra por seguridad.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL='https://pkyocewkcctnzvcncyxh.supabase.co';
+const SUPABASE_KEY='sb_publishable_hwUawXTxDqhgY2vFQfw2vg_gO7Mxgn2';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const TECH_COLORS=['#185FA5','#3B6D11','#8B2BAB','#BA7517','#A32D2D','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45'];
+const SERVICES_LIST=['Lavado Exterior','Detallado Básico','Detallado Prime','Interior Full','Lavado de Vestiduras','Mantenimiento Interior','Recubrimiento Cerámico','Corrección de Faros','Limpieza de Motor','Corrección de Pintura','Corrección y Sellador','Encerado con Máquina','Encerado'];
+const CHK={
+  calidad:['Acabado impecable — sin residuos de producto ni marcas visibles','Sin defectos en zonas pequeñas o de difícil acceso','Detallado completo sin áreas omitidas o descuidadas'],
+  proceso:['Se siguió el checklist de proceso paso a paso','Se documentó con foto cualquier daño previo al vehículo','Se usaron los productos y herramientas correctas'],
+};
+
+function load(k,d){try{return JSON.parse(localStorage.getItem(k))||d;}catch(e){return d;}}
+function saveLocal(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+let techs=load('cd_techs',['Jose Daniel','Técnico 1','Saul']);
+let records=[];
+let pins=load('cd_pins',{coord:'1234',admin:'9999'});
+let comisiones=load('cd_comisiones',{});
+let currentLevel=null;
+let selectedSvcs=[],selectedTechs=[],tiempoState=null;
+let chkState={calidad:[false,false,false],proceso:[false,false,false]};
+let histOpen={};
+let activeTechCom=null;
+
+function techColor(n){const i=techs.indexOf(n);return TECH_COLORS[i>=0?i%TECH_COLORS.length:0];}
+function initials(n){return n.split(' ').map(x=>x[0]||'').join('').slice(0,2).toUpperCase();}
+function getWeekLabel(){
+  const d=new Date(),day=d.getDay();
+  const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+  const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+  const fmt=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+  return 'Semana '+fmt(mon)+' – '+fmt(sun);
+}
+function getWeekStart(){
+  const d=new Date(),day=d.getDay();
+  const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+  mon.setHours(0,0,0,0);return mon;
+}
+function scoreOf(r){
+  const t=r.tiempo==='ok'?1:r.tiempo==='delay'?0.5:0;
+  const chk=r.chk||{calidad:[false,false,false],proceso:[false,false,false]};
+  const q=chk.calidad.filter(Boolean).length/3;
+  const p=chk.proceso.filter(Boolean).length/3;
+  return Math.round(((t+q+p)/3)*100);
+}
+function scoreColor(p){return p>=80?'#3B6D11':p>=50?'#BA7517':'#A32D2D';}
+function scorePillClass(p){return p>=80?'pill-ok':p>=50?'pill-warn':'pill-bad';}
+function dimScore(arr){return arr.filter(Boolean).length+'/'+arr.length;}
+function dimClass(arr){const d=arr.filter(Boolean).length;return d===arr.length?'pill-ok':d>0?'pill-warn':'pill-bad';}
+function teamTag(c){
+  if(c===1)return '<span class="team-tag tag-solo">Individual</span>';
+  if(c===2)return '<span class="team-tag tag-duo">En pareja</span>';
+  return '<span class="team-tag tag-trio">Equipo de 3</span>';
+}
+function fmtMoney(n){return '$'+Number(n||0).toLocaleString('es-MX');}
+function getComForTech(techName,svcName,count){
+  const key=techName+'||'+svcName;
+  const com=comisiones[key]||{solo:0,duo:0,trio:0};
+  return Number(count===1?com.solo:count===2?com.duo:com.trio)||0;
+}
+
+// ── SUPABASE ──
+async function loadRecords(){
+  try{
+    const {data,error}=await sb.from('records').select('*').order('created_at',{ascending:false});
+    if(error)throw error;
+    records=data.map(r=>({...r,chk:typeof r.chk==='string'?JSON.parse(r.chk):r.chk,techs:typeof r.techs==='string'?JSON.parse(r.techs):r.techs,svcs:typeof r.svcs==='string'?JSON.parse(r.svcs):r.svcs}));
+    setSyncStatus(true);
+  }catch(e){
+    console.error('Error loading records:',e);
+    setSyncStatus(false);
+  }
+}
+
+async function insertRecord(rec){
+  try{
+    const {error}=await sb.from('records').insert([{
+      svcs:JSON.stringify(rec.svcs),
+      vehicle:rec.vehicle,
+      date:rec.date,
+      notes:rec.notes,
+      techs:JSON.stringify(rec.techs),
+      tiempo:rec.tiempo,
+      chk:JSON.stringify(rec.chk),
+    }]);
+    if(error)throw error;
+    await loadRecords();
+    setSyncStatus(true);
+    return true;
+  }catch(e){
+    console.error('Error saving:',e);
+    setSyncStatus(false);
+    return false;
+  }
+}
+
+async function deleteRecordDB(id){
+  try{
+    const {error}=await sb.from('records').delete().eq('id',id);
+    if(error)throw error;
+    await loadRecords();
+  }catch(e){console.error(e);}
+}
+
+async function loadTechs(){
+  try{
+    const {data,error}=await sb.from('config').select('*').eq('key','techs').single();
+    if(!error&&data)techs=JSON.parse(data.value);
+  }catch(e){}
+}
+async function saveTechsDB(){
+  try{
+    await sb.from('config').upsert([{key:'techs',value:JSON.stringify(techs)}],{onConflict:'key'});
+  }catch(e){console.error(e);}
+}
+async function loadPins(){
+  try{
+    const {data,error}=await sb.from('config').select('*').eq('key','pins').single();
+    if(!error&&data)pins=JSON.parse(data.value);
+  }catch(e){}
+}
+async function savePinsDB(){
+  try{
+    await sb.from('config').upsert([{key:'pins',value:JSON.stringify(pins)}],{onConflict:'key'});
+  }catch(e){console.error(e);}
+}
+async function loadComisionesDB(){
+  try{
+    const {data,error}=await sb.from('config').select('*').eq('key','comisiones').single();
+    if(!error&&data)comisiones=JSON.parse(data.value);
+  }catch(e){}
+}
+async function saveComisionesDB(){
+  try{
+    await sb.from('config').upsert([{key:'comisiones',value:JSON.stringify(comisiones)}],{onConflict:'key'});
+  }catch(e){console.error(e);}
+}
+
+function setSyncStatus(ok){
+  const badges=document.querySelectorAll('.sync-badge');
+  badges.forEach(b=>{b.textContent=ok?'🟢 En línea':'🔴 Sin conexión';b.style.background=ok?'#EAF3DE':'#FCEBEB';b.style.color=ok?'#27500A':'#791F1F';});
+}
+
+// ── LOGIN ──
+async function doLogin(){
+  await loadPins();
+  const pin=document.getElementById('pin-input').value;
+  const err=document.getElementById('login-error');
+  if(pin===pins.admin){currentLevel='admin';startApp();}
+  else if(pin===pins.coord){currentLevel='coord';startApp();}
+  else{err.style.display='block';setTimeout(()=>err.style.display='none',2000);}
+}
+function logout(){
+  currentLevel=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('pin-input').value='';
+}
+async function savePin(role){
+  const val=document.getElementById('pin-'+role+'-new').value.trim();
+  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
+  pins[role]=val;saveLocal('cd_pins',pins);
+  await savePinsDB();
+  document.getElementById('pin-'+role+'-new').value='';
+  alert('PIN actualizado.');
+}
+
+async function startApp(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  const badge=document.getElementById('user-badge');
+  badge.textContent=currentLevel==='admin'?'Admin / CEO':'Coordinador';
+  badge.className='level-badge '+(currentLevel==='admin'?'badge-admin':'badge-coord');
+  document.getElementById('week-label').textContent=getWeekLabel();
+  document.getElementById('readonly-notice').style.display=currentLevel==='coord'?'block':'none';
+
+  // Load all data from Supabase
+  await Promise.all([loadRecords(),loadTechs(),loadComisionesDB()]);
+
+  buildTabs();showTab('registro');
+  renderSvcSelector();renderTechSelector();
+  ['calidad','proceso'].forEach(renderChk);
+  document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
+}
+
+function buildTabs(){
+  const bar=document.getElementById('tabs-bar');
+  const all=[
+    {id:'registro',label:'📋 Registrar'},
+    {id:'historial',label:'🕐 Historial'},
+    {id:'estadisticas',label:'📈 Estadísticas'},
+    {id:'resumen',label:'📊 Resumen'},
+  ];
+  if(currentLevel==='admin'){
+    all.push({id:'tecnicos',label:'👥 Técnicos',admin:true});
+    all.push({id:'comisiones',label:'💰 Comisiones',admin:true});
+    all.push({id:'config',label:'⚙️ Config',admin:true});
+  }
+  bar.innerHTML=all.map(t=>`<button class="tab${t.admin?' admin-tab':''}" onclick="showTab('${t.id}')" id="tabn-${t.id}">${t.label}</button>`).join('');
+}
+
+function showTab(name){
+  ['registro','historial','estadisticas','resumen','tecnicos','comisiones','config'].forEach(t=>{
+    const el=document.getElementById('tab-'+t);if(el)el.style.display=t===name?'block':'none';
+    const btn=document.getElementById('tabn-'+t);if(btn)btn.classList.toggle('active',t===name);
+  });
+  if(name==='historial')renderHist();
+  if(name==='estadisticas')renderEstadisticas();
+  if(name==='resumen')renderResumen();
+  if(name==='tecnicos')renderTechsManager();
+  if(name==='comisiones')renderComisiones();
+}
+
+// ── SVC SELECTOR ──
+function renderSvcSelector(){
+  const el=document.getElementById('svc-selector');
+  if(!el)return;
+  el.innerHTML=SERVICES_LIST.map(s=>`
+    <div onclick="toggleSvc('${s}')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;background:${selectedSvcs.includes(s)?'#FFF0EB':'#fff'}">
+      <div style="width:18px;height:18px;border-radius:4px;flex-shrink:0;border:2px solid ${selectedSvcs.includes(s)?'#F15A22':'#ccc'};background:${selectedSvcs.includes(s)?'#F15A22':'#fff'};display:flex;align-items:center;justify-content:center;">
+        ${selectedSvcs.includes(s)?'<span style="color:#fff;font-size:11px;font-weight:700">✓</span>':''}
+      </div>
+      <span style="font-size:13px;color:#222">${s}</span>
+    </div>`).join('');
+  const lbl=document.getElementById('svc-trigger-label');
+  if(lbl){lbl.textContent=selectedSvcs.length?selectedSvcs.join(', '):'Selecciona uno o más servicios...';lbl.style.color=selectedSvcs.length?'#111':'#888';}
+}
+function toggleSvc(s){selectedSvcs=selectedSvcs.includes(s)?selectedSvcs.filter(x=>x!==s):[...selectedSvcs,s];renderSvcSelector();}
+function toggleSvcDropdown(){
+  const dd=document.getElementById('svc-dropdown');
+  if(!dd)return;
+  const isOpen=dd.style.display==='block';
+  dd.style.display=isOpen?'none':'block';
+  const arrow=document.querySelector('#svc-dropdown-trigger span');
+  if(arrow)arrow.textContent=isOpen?'▼':'▲';
+}
+document.addEventListener('click',function(e){
+  const dd=document.getElementById('svc-dropdown');
+  const trigger=document.getElementById('svc-dropdown-trigger');
+  if(dd&&trigger&&!dd.contains(e.target)&&!trigger.contains(e.target)){
+    dd.style.display='none';
+    const arrow=trigger.querySelector('span');
+    if(arrow)arrow.textContent='▼';
+  }
+});
+
+// ── TECH SELECTOR ──
+function renderTechSelector(){
+  document.getElementById('tech-selector').innerHTML=techs.map(t=>{
+    const c=techColor(t),sel=selectedTechs.includes(t);
+    return `<button class="tech-btn ${sel?'selected':''}" style="background:${c};border-color:${c}" onclick="toggleTech('${t}')">${t}</button>`;
+  }).join('');
+}
+function toggleTech(t){selectedTechs=selectedTechs.includes(t)?selectedTechs.filter(x=>x!==t):[...selectedTechs,t];renderTechSelector();}
+function selectTiempo(val){
+  tiempoState=tiempoState===val?null:val;
+  document.getElementById('radio-ok').classList.toggle('selected-radio',tiempoState==='ok');
+  document.getElementById('radio-delay').classList.toggle('selected-radio',tiempoState==='delay');
+}
+function renderChk(dim){
+  document.getElementById('chk-'+dim).innerHTML=CHK[dim].map((c,i)=>
+    `<div class="chk-item" onclick="toggleChk('${dim}',${i})"><div class="chk-box ${chkState[dim][i]?'checked':''}"></div><span style="font-size:13px">${c}</span></div>`
+  ).join('');
+}
+function toggleChk(dim,i){chkState[dim][i]=!chkState[dim][i];renderChk(dim);}
+
+async function saveRecord(){
+  const vehicle=document.getElementById('f-vehicle').value.trim();
+  const date=document.getElementById('f-date').value;
+  const notes=document.getElementById('f-notes').value.trim();
+  if(!selectedSvcs.length){alert('Selecciona al menos un servicio.');return;}
+  if(!selectedTechs.length){alert('Selecciona al menos un técnico.');return;}
+  if(!date){alert('Selecciona la fecha.');return;}
+  const ok=await insertRecord({svcs:[...selectedSvcs],vehicle,date,notes,techs:[...selectedTechs],tiempo:tiempoState,chk:{calidad:[...chkState.calidad],proceso:[...chkState.proceso]}});
+  if(ok){
+    document.getElementById('f-vehicle').value='';document.getElementById('f-notes').value='';
+    selectedSvcs=[];selectedTechs=[];tiempoState=null;
+    chkState={calidad:[false,false,false],proceso:[false,false,false]};
+    renderSvcSelector();renderTechSelector();
+    document.getElementById('radio-ok').classList.remove('selected-radio');
+    document.getElementById('radio-delay').classList.remove('selected-radio');
+    ['calidad','proceso'].forEach(renderChk);
+    const dd=document.getElementById('svc-dropdown');if(dd)dd.style.display='none';
+    const a=document.getElementById('save-alert');a.style.display='block';setTimeout(()=>a.style.display='none',3000);
+  }else{alert('Error al guardar. Verifica tu conexión.');}
+}
+
+function renderHist(){
+  const el=document.getElementById('hist-list');
+  if(!records.length){el.innerHTML='<div class="empty-state">Aún no hay evaluaciones registradas.</div>';return;}
+  el.innerHTML=records.map(r=>{
+    const p=scoreOf(r),open=histOpen[r.id];
+    const svcs=r.svcs||(r.svc?[r.svc]:[]);
+    const tiempoLabel=r.tiempo==='ok'?'<span class="pill pill-ok">⏱ Dentro del tiempo</span>':r.tiempo==='delay'?'<span class="pill pill-warn">⏱ Fuera de tiempo</span>':'<span class="pill pill-neutral">⏱ Sin evaluar</span>';
+    const techDots=r.techs.map(t=>`<span class="tech-dot" style="background:${techColor(t)}"></span>${t}`).join(' · ');
+    const chk=r.chk||{calidad:[false,false,false],proceso:[false,false,false]};
+    return `<div class="hist-card">
+      <div class="hist-header" onclick="toggleHist('${r.id}')">
+        <div style="flex:1;min-width:0">
+          <div class="hist-svc"><div class="svc-tags">${svcs.map(s=>`<span class="svc-tag">${s}</span>`).join('')}</div>${r.vehicle?`<span class="vehicle-tag" style="margin-top:3px;display:inline-flex">🚗 ${r.vehicle}</span>`:''}</div>
+          <div class="hist-meta">${r.date} · ${techDots} ${teamTag(r.techs.length)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><span class="score-pill ${scorePillClass(p)}">${p}%</span><span style="color:#aaa;font-size:18px">${open?'▲':'▼'}</span></div>
+      </div>
+      ${open?`<div class="hist-body">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:#555">Equipo:</span>
+          ${r.techs.map(t=>`<span style="background:${techColor(t)};color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">${t}</span>`).join('')}
+          ${teamTag(r.techs.length)}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${tiempoLabel}<span class="pill ${dimClass(chk.calidad)}">⭐ Calidad ${dimScore(chk.calidad)}</span><span class="pill ${dimClass(chk.proceso)}">✅ Proceso ${dimScore(chk.proceso)}</span></div>
+        ${r.notes?`<div><div class="note-label">Nota del supervisor</div><div class="note-box">"${r.notes}"</div></div>`:''}
+        ${currentLevel==='admin'?`<button class="del-btn" onclick="deleteRecord('${r.id}')">🗑 Eliminar</button>`:''}
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+function toggleHist(id){histOpen[id]=!histOpen[id];renderHist();}
+async function deleteRecord(id){
+  if(currentLevel!=='admin'){alert('Sin permiso.');return;}
+  if(confirm('¿Eliminar esta evaluación?'))await deleteRecordDB(id);renderHist();
+}
+
+function renderResumen(){
+  const ws=getWeekStart();
+  const wr=records.filter(r=>new Date(r.date+'T00:00:00')>=ws);
+  const eq=document.getElementById('equipo-card');
+  if(!wr.length){eq.innerHTML='<div class="empty-state">Sin evaluaciones esta semana.</div>';document.getElementById('resumen-grid').innerHTML='';document.getElementById('svc-by-person').innerHTML='';return;}
+  const avg=Math.round(wr.reduce((a,r)=>a+scoreOf(r),0)/wr.length);
+  const activos=[...new Set(wr.flatMap(r=>r.techs))].length;
+  eq.innerHTML=`<div class="equipo-row">
+    <div class="equipo-stat"><div class="equipo-num">${wr.length}</div><div class="equipo-lbl">Servicios esta semana</div></div>
+    <div class="equipo-stat"><div class="equipo-num" style="color:${scoreColor(avg)}">${avg}%</div><div class="equipo-lbl">Promedio del equipo</div></div>
+    <div class="equipo-stat"><div class="equipo-num">${activos}</div><div class="equipo-lbl">Técnicos activos</div></div>
+    <div class="equipo-stat"><div class="equipo-num">${wr.filter(r=>r.techs.length===1).length}</div><div class="equipo-lbl">Individuales</div></div>
+    <div class="equipo-stat"><div class="equipo-num">${wr.filter(r=>r.techs.length>1).length}</div><div class="equipo-lbl">En equipo</div></div>
+  </div><div class="res-bar-wrap" style="margin-top:16px"><div class="res-bar" style="width:${avg}%;background:${scoreColor(avg)}"></div></div>`;
+  const byTech={};
+  wr.forEach(r=>r.techs.forEach(t=>{if(!byTech[t])byTech[t]={scores:[],svcs:[]};byTech[t].scores.push(scoreOf(r));byTech[t].svcs.push({svcs:r.svcs||(r.svc?[r.svc]:[]),vehicle:r.vehicle||'',count:r.techs.length,date:r.date});}));
+  document.getElementById('resumen-grid').innerHTML=Object.entries(byTech).map(([t,d])=>{
+    const p=Math.round(d.scores.reduce((a,b)=>a+b,0)/d.scores.length);const c=techColor(t);
+    return `<div class="res-card"><div class="res-avatar" style="background:${c}">${initials(t)}</div><div class="res-name">${t}</div><div class="res-score" style="color:${scoreColor(p)}">${p}%</div><div class="res-sub">${d.scores.length} servicio${d.scores.length!==1?'s':''}</div><div class="res-stats"><span class="res-stat">Individual: ${d.svcs.filter(s=>s.count===1).length}</span><span class="res-stat">En equipo: ${d.svcs.filter(s=>s.count>1).length}</span></div><div class="res-bar-wrap"><div class="res-bar" style="width:${p}%;background:${c}"></div></div></div>`;
+  }).join('');
+  document.getElementById('svc-by-person').innerHTML=Object.entries(byTech).map(([t,d])=>{
+    const c=techColor(t);
+    return `<div style="margin-bottom:18px"><div style="font-size:13px;font-weight:700;color:#333;margin-bottom:6px;display:flex;align-items:center;gap:8px"><div class="res-avatar" style="width:28px;height:28px;font-size:11px;background:${c}">${initials(t)}</div>${t}</div>
+    <table class="svc-table"><thead><tr><th>Fecha</th><th>Servicios</th><th>Vehículo</th><th>Modalidad</th></tr></thead><tbody>${d.svcs.map(s=>`<tr><td>${s.date}</td><td><div class="svc-tags">${s.svcs.map(sv=>`<span class="svc-tag">${sv}</span>`).join('')}</div></td><td>${s.vehicle?`<span class="vehicle-tag">🚗 ${s.vehicle}</span>`:'—'}</td><td>${teamTag(s.count)}</td></tr>`).join('')}</tbody></table></div>`;
+  }).join('');
+}
+
+function renderEstadisticas(){
+  const el=document.getElementById('stats-content');if(!el)return;
+  const ws=getWeekStart();
+  const weekRecs=records.filter(r=>new Date(r.date+'T00:00:00')>=ws);
+  const now=new Date();
+  const activeMonth=window._statsMonth!=null?window._statsMonth:now.getMonth();
+  const activeYear=window._statsYear||now.getFullYear();
+  const monthRecs=records.filter(r=>{const d=new Date(r.date+'T00:00:00');return d.getMonth()===activeMonth&&d.getFullYear()===activeYear;});
+  const monthSet={};
+  records.forEach(r=>{const d=new Date(r.date+'T00:00:00');const k=d.getFullYear()+'-'+String(d.getMonth()).padStart(2,'0');monthSet[k]={month:d.getMonth(),year:d.getFullYear(),label:d.toLocaleDateString('es-MX',{month:'long',year:'numeric'})};});
+  const curKey=now.getFullYear()+'-'+String(now.getMonth()).padStart(2,'0');
+  if(!monthSet[curKey])monthSet[curKey]={month:now.getMonth(),year:now.getFullYear(),label:now.toLocaleDateString('es-MX',{month:'long',year:'numeric'})};
+  const months=Object.entries(monthSet).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6);
+  function countByService(recs){const map={};recs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);svcs.forEach(s=>{map[s]=(map[s]||0)+1;});});return Object.entries(map).sort((a,b)=>b[1]-a[1]);}
+  function countByTech(recs){const map={};recs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);r.techs.forEach(t=>{map[t]=(map[t]||0)+svcs.length;});});return Object.entries(map).sort((a,b)=>b[1]-a[1]);}
+  const wsc=countByService(weekRecs),msc=countByService(monthRecs),mtc=countByTech(monthRecs);
+  el.innerHTML=`
+    <div class="stats-card">
+      <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:14px">📅 Esta semana</div>
+      <div class="stats-grid">
+        <div class="stats-item"><div class="stats-num">${weekRecs.length}</div><div class="stats-lbl">Servicios totales</div></div>
+        <div class="stats-item"><div class="stats-num">${[...new Set(weekRecs.flatMap(r=>r.techs))].length}</div><div class="stats-lbl">Técnicos activos</div></div>
+        <div class="stats-item"><div class="stats-num">${wsc.length}</div><div class="stats-lbl">Tipos de servicio</div></div>
+      </div>
+      ${wsc.length?`<table class="stats-table"><thead><tr><th>Tipo de servicio</th><th>Cantidad</th></tr></thead><tbody>${wsc.map(([s,n])=>`<tr><td>${s}</td><td>${n}</td></tr>`).join('')}</tbody></table>`:'<div class="empty-state">Sin servicios esta semana.</div>'}
+    </div>
+    <div class="stats-card">
+      <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:12px">📆 Corte mensual</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${months.map(([k,v])=>`<button class="month-btn ${v.month===activeMonth&&v.year===activeYear?'active':''}" onclick="setStatsMonth(${v.month},${v.year})">${v.label}</button>`).join('')}</div>
+      <div class="stats-grid">
+        <div class="stats-item"><div class="stats-num">${monthRecs.length}</div><div class="stats-lbl">Servicios del mes</div></div>
+        <div class="stats-item"><div class="stats-num">${[...new Set(monthRecs.flatMap(r=>r.techs))].length}</div><div class="stats-lbl">Técnicos activos</div></div>
+        <div class="stats-item"><div class="stats-num">${Math.round(monthRecs.length/4.3)}</div><div class="stats-lbl">Promedio semanal</div></div>
+      </div>
+      ${msc.length?`
+        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">Por tipo de servicio</div>
+        <table class="stats-table" style="margin-bottom:14px"><thead><tr><th>Servicio</th><th>Cantidad</th></tr></thead><tbody>${msc.map(([s,n])=>`<tr><td>${s}</td><td>${n}</td></tr>`).join('')}</tbody></table>
+        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">Por técnico</div>
+        ${mtc.map(([t,n])=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #eee"><div class="res-avatar" style="width:28px;height:28px;font-size:11px;background:${techColor(t)}">${initials(t)}</div><span style="font-size:13px;font-weight:600;flex:1">${t}</span><span style="font-size:14px;font-weight:700">${n} servicio${n!==1?'s':''}</span></div>`).join('')}
+      `:'<div class="empty-state">Sin servicios este mes.</div>'}
+    </div>`;
+}
+function setStatsMonth(m,y){window._statsMonth=m;window._statsYear=y;renderEstadisticas();}
+
+async function renderTechsManager(){
+  const el=document.getElementById('techs-manager');
+  el.innerHTML=techs.map((t,i)=>{const c=TECH_COLORS[i%TECH_COLORS.length];return `<div class="tech-row-mgr"><div class="tech-color-dot" style="background:${c}"></div><input class="tech-name-input" value="${t}" onchange="renameTech(${i},this.value)"><button style="background:none;border:none;cursor:pointer;color:#aaa;padding:4px 8px;font-size:15px" onclick="deleteTech(${i})">🗑</button></div>`;}).join('');
+}
+async function renameTech(i,v){if(v.trim()){techs[i]=v.trim();await saveTechsDB();renderTechSelector();}}
+async function deleteTech(i){if(confirm('¿Eliminar a "'+techs[i]+'"?')){techs.splice(i,1);await saveTechsDB();renderTechsManager();renderTechSelector();}}
+async function addTech(){
+  const inp=document.getElementById('new-tech-input');const n=inp.value.trim();
+  if(!n){alert('Escribe un nombre.');return;}if(techs.includes(n)){alert('Ya existe.');return;}
+  techs.push(n);await saveTechsDB();inp.value='';renderTechsManager();renderTechSelector();
+}
+
+function renderComisiones(){
+  if(!activeTechCom||!techs.includes(activeTechCom))activeTechCom=techs[0]||null;
+  const comTabsEl=document.getElementById('com-tabs');
+  if(comTabsEl)comTabsEl.innerHTML=techs.map(t=>{const c=techColor(t);return `<button class="com-tab ${activeTechCom===t?'active':''}" style="${activeTechCom===t?`background:${c};color:#fff`:''}" onclick="setActiveTechCom('${t}')">${t}</button>`;}).join('');
+  const t=activeTechCom;const tbl=document.getElementById('com-table');if(!t||!tbl)return;
+  tbl.innerHTML=`<thead><tr><th style="width:40%">Servicio</th><th>Individual</th><th>En pareja</th><th>Equipo de 3</th></tr></thead><tbody>${SERVICES_LIST.map(s=>{const key=t+'||'+s;const com=comisiones[key]||{solo:0,duo:0,trio:0};const sk=s.replace(/[^a-zA-Z0-9]/g,'_');return `<tr><td style="font-weight:600">${s}</td><td><input class="com-input" type="number" min="0" id="ci-solo-${sk}" value="${com.solo}"></td><td><input class="com-input" type="number" min="0" id="ci-duo-${sk}" value="${com.duo}"></td><td><input class="com-input" type="number" min="0" id="ci-trio-${sk}" value="${com.trio}"></td></tr>`;}).join('')}</tbody>`;
+  const ws=getWeekStart();const wr=records.filter(r=>new Date(r.date+'T00:00:00')>=ws);
+  const comByTech={};
+  wr.forEach(r=>{const svcsArr=r.svcs||(r.svc?[r.svc]:[]);r.techs.forEach(tech=>{if(!comByTech[tech])comByTech[tech]=[];svcsArr.forEach(svc=>{comByTech[tech].push({svc,vehicle:r.vehicle||'',date:r.date,amount:getComForTech(tech,svc,r.techs.length),count:r.techs.length});});});});
+  const el=document.getElementById('com-resumen');
+  if(!Object.keys(comByTech).length){el.innerHTML='<div class="empty-state">Sin servicios esta semana.</div>';}
+  else{el.innerHTML=Object.entries(comByTech).map(([tech,rows])=>{const c=techColor(tech);const total=rows.reduce((a,r)=>a+r.amount,0);return `<div class="com-resumen-card"><div class="com-resumen-header"><div class="com-resumen-name"><div class="res-avatar" style="width:28px;height:28px;font-size:11px;background:${c}">${initials(tech)}</div>${tech}</div><span class="com-total-badge">${fmtMoney(total)}</span></div>${rows.map(r=>`<div class="com-detail-row"><div><div style="font-weight:600">${r.svc}</div><div style="font-size:11px;color:#888">${r.date}${r.vehicle?' · 🚗 '+r.vehicle:''} · ${r.count===1?'Individual':r.count===2?'En pareja':'Equipo de 3'}</div></div><span class="com-amount">${fmtMoney(r.amount)}</span></div>`).join('')}</div>`;}).join('');}
+  const tpt={};Object.entries(comByTech).forEach(([t,rows])=>{tpt[t]=rows.reduce((a,r)=>a+r.amount,0);});
+  const proy=document.getElementById('proy-grid');
+  const ts=Object.values(tpt).reduce((a,b)=>a+b,0);
+  proy.innerHTML=!Object.keys(tpt).length?'<div style="color:#aaa;font-size:13px">Sin datos.</div>':`<div class="proy-item"><div class="proy-num">${fmtMoney(ts)}</div><div class="proy-lbl">Total equipo esta semana</div></div><div class="proy-item"><div class="proy-num">${fmtMoney(ts*4)}</div><div class="proy-lbl">Proyección mensual equipo</div></div>${Object.entries(tpt).map(([t,v])=>`<div class="proy-item"><div class="proy-num">${fmtMoney(v*4)}</div><div class="proy-lbl">Proyección mensual<br><strong>${t}</strong></div></div>`).join('')}`;
+}
+function setActiveTechCom(t){activeTechCom=t;renderComisiones();}
+async function saveComisiones(){
+  const t=activeTechCom;if(!t){alert('Selecciona un técnico.');return;}
+  SERVICES_LIST.forEach(s=>{const key=t+'||'+s;const sk=s.replace(/[^a-zA-Z0-9]/g,'_');comisiones[key]={solo:Number(document.getElementById('ci-solo-'+sk)?.value||0),duo:Number(document.getElementById('ci-duo-'+sk)?.value||0),trio:Number(document.getElementById('ci-trio-'+sk)?.value||0)};});
+  await saveComisionesDB();saveLocal('cd_comisiones',comisiones);
+  alert('Comisiones de '+t+' guardadas.');renderComisiones();
+}
+</script>
+</body>
+</html>
