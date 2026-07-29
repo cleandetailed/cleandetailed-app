@@ -4,7 +4,420 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Clean Detailed — Sistema de Evaluación</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+// ── GRÁFICAS ──
+let chartTipos=null, chartColab=null, chartSemanas=null;
+let chartsTech={};
+
+function setGrafPeriod(p){
+  const now=new Date();
+  let desde,hasta=new Date();
+  if(p==='week'){
+    const day=now.getDay();
+    desde=new Date(now);desde.setDate(now.getDate()-(day===0?6:day-1));
+  } else if(p==='month'){
+    desde=new Date(now.getFullYear(),now.getMonth(),1);
+  } else {
+    // all - find min date in records
+    if(!records.length){desde=new Date(now.getFullYear(),now.getMonth(),1);}
+    else{
+      const dates=records.map(r=>r.date).sort();
+      desde=new Date(dates[0]+'T00:00:00');
+    }
+  }
+  document.getElementById('graf-desde').value=desde.toISOString().split('T')[0];
+  document.getElementById('graf-hasta').value=hasta.toISOString().split('T')[0];
+  renderGraficas();
+}
+
+function initGraficas(){
+  if(!document.getElementById('graf-desde').value){
+    setGrafPeriod('month');
+  } else {
+    renderGraficas();
+  }
+}
+
+function destroyChart(c){if(c){try{c.destroy();}catch(e){}}}
+
+function renderGraficas(){
+  const desde=document.getElementById('graf-desde').value;
+  const hasta=document.getElementById('graf-hasta').value;
+  if(!desde||!hasta){alert('Selecciona el período.');return;}
+
+  const desdeD=new Date(desde+'T00:00:00');
+  const hastaD=new Date(hasta+'T23:59:59');
+
+  const filtered=records.filter(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    return d>=desdeD&&d<=hastaD;
+  });
+
+  const fmtDate=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('graf-period-label').textContent=
+    filtered.length+' servicios del '+fmtDate(desdeD)+' al '+fmtDate(hastaD);
+
+  // Count by service type
+  const byTipo={};
+  filtered.forEach(r=>{
+    const svcs=r.svcs||(r.svc?[r.svc]:[]);
+    svcs.forEach(s=>{byTipo[s]=(byTipo[s]||0)+1;});
+  });
+  const tipoLabels=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]);
+  const tipoData=tipoLabels.map(k=>byTipo[k]);
+
+  // Count by collaborator
+  const byColab={};
+  filtered.forEach(r=>{
+    r.techs.forEach(t=>{byColab[t]=(byColab[t]||0)+1;});
+  });
+  const colabLabels=Object.keys(byColab).sort((a,b)=>byColab[b]-byColab[a]);
+  const colabData=colabLabels.map(k=>byColab[k]);
+  const colabColors=colabLabels.map(t=>techColor(t));
+
+  // Count by week
+  const byWeek={};
+  filtered.forEach(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    const day=d.getDay();
+    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+    const key=mon.toISOString().split('T')[0];
+    const lbl=mon.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+    if(!byWeek[key])byWeek[key]={lbl,count:0};
+    byWeek[key].count++;
+  });
+  const weekEntries=Object.entries(byWeek).sort((a,b)=>a[0].localeCompare(b[0]));
+  const weekLabels=weekEntries.map(([,v])=>v.lbl);
+  const weekData=weekEntries.map(([,v])=>v.count);
+
+  const COLORS=['#F15A22','#185FA5','#3B6D11','#8B2BAB','#BA7517','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45','#E67E22','#2980B9','#27AE60'];
+
+  // Chart 1: Tipos (horizontal bar)
+  destroyChart(chartTipos);
+  const ctx1=document.getElementById('chart-tipos').getContext('2d');
+  chartTipos=new Chart(ctx1,{
+    type:'bar',
+    data:{
+      labels:tipoLabels,
+      datasets:[{
+        label:'Servicios',
+        data:tipoData,
+        backgroundColor:tipoLabels.map((_,i)=>COLORS[i%COLORS.length]),
+        borderRadius:6,
+        borderSkipped:false,
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+    }
+  });
+
+  // Chart 2: Colaboradores (doughnut)
+  destroyChart(chartColab);
+  const ctx2=document.getElementById('chart-colab').getContext('2d');
+  chartColab=new Chart(ctx2,{
+    type:'doughnut',
+    data:{
+      labels:colabLabels,
+      datasets:[{data:colabData,backgroundColor:colabColors,borderWidth:2,borderColor:'#fff'}]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{position:'bottom',labels:{font:{size:12},padding:12}},
+        tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}
+      }
+    }
+  });
+
+  // Chart 3: Por semana (line)
+  destroyChart(chartSemanas);
+  const ctx3=document.getElementById('chart-semanas').getContext('2d');
+  chartSemanas=new Chart(ctx3,{
+    type:'line',
+    data:{
+      labels:weekLabels,
+      datasets:[{
+        label:'Servicios por semana',
+        data:weekData,
+        borderColor:'#F15A22',
+        backgroundColor:'rgba(241,90,34,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:'#F15A22',
+        pointRadius:5,
+        fill:true,
+        tension:0.3
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicios`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Charts per tech: what services each person did
+  const techContainer=document.getElementById('graf-by-tech');
+  // Destroy old charts
+  Object.values(chartsTech).forEach(c=>destroyChart(c));
+  chartsTech={};
+
+  if(!colabLabels.length){techContainer.innerHTML='';return;}
+
+  techContainer.innerHTML=`<div style="font-size:13px;font-weight:700;color:#333;margin-bottom:12px">Servicios por colaborador — detalle</div>`+
+    colabLabels.map(t=>`
+      <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:50%;background:${techColor(t)};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${initials(t)}</div>
+          <span style="font-size:14px;font-weight:700;color:#111">${t}</span>
+          <span style="font-size:12px;color:#888">${byColab[t]} servicio${byColab[t]!==1?'s':''}</span>
+        </div>
+        <canvas id="chart-tech-${t.replace(/\s/g,'_')}" height="120"></canvas>
+      </div>
+    `).join('');
+
+  colabLabels.forEach(t=>{
+    const techRecs=filtered.filter(r=>r.techs.includes(t));
+    const ts={};
+    techRecs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);svcs.forEach(s=>{ts[s]=(ts[s]||0)+1;});});
+    const tLabels=Object.keys(ts).sort((a,b)=>ts[b]-ts[a]);
+    const tData=tLabels.map(k=>ts[k]);
+    const canvasId='chart-tech-'+t.replace(/\s/g,'_');
+    const ctx=document.getElementById(canvasId)?.getContext('2d');
+    if(!ctx)return;
+    chartsTech[t]=new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels:tLabels,
+        datasets:[{
+          label:'Servicios',
+          data:tData,
+          backgroundColor:techColor(t),
+          borderRadius:6,
+          borderSkipped:false,
+        }]
+      },
+      options:{
+        indexAxis:'y',
+        responsive:true,
+        plugins:{legend:{display:false}},
+        scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+      }
+    });
+  });
+}
+
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
+// ── GRÁFICAS ──
+let chartTipos=null, chartColab=null, chartSemanas=null;
+let chartsTech={};
+
+function setGrafPeriod(p){
+  const now=new Date();
+  let desde,hasta=new Date();
+  if(p==='week'){
+    const day=now.getDay();
+    desde=new Date(now);desde.setDate(now.getDate()-(day===0?6:day-1));
+  } else if(p==='month'){
+    desde=new Date(now.getFullYear(),now.getMonth(),1);
+  } else {
+    // all - find min date in records
+    if(!records.length){desde=new Date(now.getFullYear(),now.getMonth(),1);}
+    else{
+      const dates=records.map(r=>r.date).sort();
+      desde=new Date(dates[0]+'T00:00:00');
+    }
+  }
+  document.getElementById('graf-desde').value=desde.toISOString().split('T')[0];
+  document.getElementById('graf-hasta').value=hasta.toISOString().split('T')[0];
+  renderGraficas();
+}
+
+function initGraficas(){
+  if(!document.getElementById('graf-desde').value){
+    setGrafPeriod('month');
+  } else {
+    renderGraficas();
+  }
+}
+
+function destroyChart(c){if(c){try{c.destroy();}catch(e){}}}
+
+function renderGraficas(){
+  const desde=document.getElementById('graf-desde').value;
+  const hasta=document.getElementById('graf-hasta').value;
+  if(!desde||!hasta){alert('Selecciona el período.');return;}
+
+  const desdeD=new Date(desde+'T00:00:00');
+  const hastaD=new Date(hasta+'T23:59:59');
+
+  const filtered=records.filter(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    return d>=desdeD&&d<=hastaD;
+  });
+
+  const fmtDate=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('graf-period-label').textContent=
+    filtered.length+' servicios del '+fmtDate(desdeD)+' al '+fmtDate(hastaD);
+
+  // Count by service type
+  const byTipo={};
+  filtered.forEach(r=>{
+    const svcs=r.svcs||(r.svc?[r.svc]:[]);
+    svcs.forEach(s=>{byTipo[s]=(byTipo[s]||0)+1;});
+  });
+  const tipoLabels=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]);
+  const tipoData=tipoLabels.map(k=>byTipo[k]);
+
+  // Count by collaborator
+  const byColab={};
+  filtered.forEach(r=>{
+    r.techs.forEach(t=>{byColab[t]=(byColab[t]||0)+1;});
+  });
+  const colabLabels=Object.keys(byColab).sort((a,b)=>byColab[b]-byColab[a]);
+  const colabData=colabLabels.map(k=>byColab[k]);
+  const colabColors=colabLabels.map(t=>techColor(t));
+
+  // Count by week
+  const byWeek={};
+  filtered.forEach(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    const day=d.getDay();
+    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+    const key=mon.toISOString().split('T')[0];
+    const lbl=mon.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+    if(!byWeek[key])byWeek[key]={lbl,count:0};
+    byWeek[key].count++;
+  });
+  const weekEntries=Object.entries(byWeek).sort((a,b)=>a[0].localeCompare(b[0]));
+  const weekLabels=weekEntries.map(([,v])=>v.lbl);
+  const weekData=weekEntries.map(([,v])=>v.count);
+
+  const COLORS=['#F15A22','#185FA5','#3B6D11','#8B2BAB','#BA7517','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45','#E67E22','#2980B9','#27AE60'];
+
+  // Chart 1: Tipos (horizontal bar)
+  destroyChart(chartTipos);
+  const ctx1=document.getElementById('chart-tipos').getContext('2d');
+  chartTipos=new Chart(ctx1,{
+    type:'bar',
+    data:{
+      labels:tipoLabels,
+      datasets:[{
+        label:'Servicios',
+        data:tipoData,
+        backgroundColor:tipoLabels.map((_,i)=>COLORS[i%COLORS.length]),
+        borderRadius:6,
+        borderSkipped:false,
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+    }
+  });
+
+  // Chart 2: Colaboradores (doughnut)
+  destroyChart(chartColab);
+  const ctx2=document.getElementById('chart-colab').getContext('2d');
+  chartColab=new Chart(ctx2,{
+    type:'doughnut',
+    data:{
+      labels:colabLabels,
+      datasets:[{data:colabData,backgroundColor:colabColors,borderWidth:2,borderColor:'#fff'}]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{position:'bottom',labels:{font:{size:12},padding:12}},
+        tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}
+      }
+    }
+  });
+
+  // Chart 3: Por semana (line)
+  destroyChart(chartSemanas);
+  const ctx3=document.getElementById('chart-semanas').getContext('2d');
+  chartSemanas=new Chart(ctx3,{
+    type:'line',
+    data:{
+      labels:weekLabels,
+      datasets:[{
+        label:'Servicios por semana',
+        data:weekData,
+        borderColor:'#F15A22',
+        backgroundColor:'rgba(241,90,34,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:'#F15A22',
+        pointRadius:5,
+        fill:true,
+        tension:0.3
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicios`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Charts per tech: what services each person did
+  const techContainer=document.getElementById('graf-by-tech');
+  // Destroy old charts
+  Object.values(chartsTech).forEach(c=>destroyChart(c));
+  chartsTech={};
+
+  if(!colabLabels.length){techContainer.innerHTML='';return;}
+
+  techContainer.innerHTML=`<div style="font-size:13px;font-weight:700;color:#333;margin-bottom:12px">Servicios por colaborador — detalle</div>`+
+    colabLabels.map(t=>`
+      <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:50%;background:${techColor(t)};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${initials(t)}</div>
+          <span style="font-size:14px;font-weight:700;color:#111">${t}</span>
+          <span style="font-size:12px;color:#888">${byColab[t]} servicio${byColab[t]!==1?'s':''}</span>
+        </div>
+        <canvas id="chart-tech-${t.replace(/\s/g,'_')}" height="120"></canvas>
+      </div>
+    `).join('');
+
+  colabLabels.forEach(t=>{
+    const techRecs=filtered.filter(r=>r.techs.includes(t));
+    const ts={};
+    techRecs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);svcs.forEach(s=>{ts[s]=(ts[s]||0)+1;});});
+    const tLabels=Object.keys(ts).sort((a,b)=>ts[b]-ts[a]);
+    const tData=tLabels.map(k=>ts[k]);
+    const canvasId='chart-tech-'+t.replace(/\s/g,'_');
+    const ctx=document.getElementById(canvasId)?.getContext('2d');
+    if(!ctx)return;
+    chartsTech[t]=new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels:tLabels,
+        datasets:[{
+          label:'Servicios',
+          data:tData,
+          backgroundColor:techColor(t),
+          borderRadius:6,
+          borderSkipped:false,
+        }]
+      },
+      options:{
+        indexAxis:'y',
+        responsive:true,
+        plugins:{legend:{display:false}},
+        scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+      }
+    });
+  });
+}
+
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:14px;background:#f0f0f0;color:#111;min-height:100vh}
@@ -237,14 +650,29 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:var(--orange)}
       </div>
     </div>
 
-    <div id="tab-historial" style="display:none"><div id="hist-list"></div></div>
+    <div id="tab-historial" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="hist-search" placeholder="🔍 Buscar por servicio, vehículo o técnico..." style="flex:1;min-width:200px;font-size:13px;padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-family:Arial,sans-serif">
+        <input type="month" id="hist-month" style="font-size:13px;padding:8px 10px;border:1px solid #ccc;border-radius:8px;font-family:Arial,sans-serif" onchange="renderHist()">
+        <button onclick="clearHistFilter()" style="padding:8px 14px;border:1px solid #ccc;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;font-family:Arial,sans-serif;color:#888">Limpiar</button>
+      </div>
+      <div id="hist-list"></div>
+    </div>
     <div id="tab-estadisticas" style="display:none"><div id="stats-content"></div></div>
     <div id="tab-resumen" style="display:none">
-      <div class="section-label">Resumen del equipo esta semana</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div class="section-label" style="margin-bottom:0">Resumen semanal</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button onclick="prevWeek()" style="background:#fff;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px">◀</button>
+          <div id="week-range-label" style="font-size:13px;font-weight:600;color:#333;min-width:160px;text-align:center"></div>
+          <button onclick="nextWeek()" style="background:#fff;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px">▶</button>
+          <button onclick="goCurrentWeek()" style="background:var(--orange);color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:Arial,sans-serif">Hoy</button>
+        </div>
+      </div>
       <div class="equipo-card" id="equipo-card"></div>
       <div class="section-label" style="margin-top:20px">Por técnico</div>
       <div class="resumen-grid" id="resumen-grid"></div>
-      <div class="section-label" style="margin-top:24px">Servicios esta semana</div>
+      <div class="section-label" style="margin-top:24px">Servicios de la semana</div>
       <div id="svc-by-person"></div>
     </div>
     <div id="tab-tecnicos" style="display:none">
@@ -268,6 +696,39 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:var(--orange)}
         <div class="proy-grid" id="proy-grid"></div>
       </div>
     </div>
+    <div id="tab-graficas" style="display:none">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em">Desde</label>
+          <input type="date" id="graf-desde" style="font-size:13px;padding:8px 10px;border:1px solid #ccc;border-radius:8px;font-family:Arial,sans-serif">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em">Hasta</label>
+          <input type="date" id="graf-hasta" style="font-size:13px;padding:8px 10px;border:1px solid #ccc;border-radius:8px;font-family:Arial,sans-serif">
+        </div>
+        <button onclick="renderGraficas()" style="background:#F15A22;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif">Ver gráficas</button>
+        <button onclick="setGrafPeriod('week')" style="background:#fff;border:1px solid #ccc;border-radius:8px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:Arial,sans-serif">Esta semana</button>
+        <button onclick="setGrafPeriod('month')" style="background:#fff;border:1px solid #ccc;border-radius:8px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:Arial,sans-serif">Este mes</button>
+        <button onclick="setGrafPeriod('all')" style="background:#fff;border:1px solid #ccc;border-radius:8px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:Arial,sans-serif">Todo</button>
+      </div>
+      <div id="graf-period-label" style="font-size:13px;color:#888;margin-bottom:16px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="graficas-grid">
+        <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;grid-column:1/-1">
+          <div style="font-size:13px;font-weight:700;color:#333;margin-bottom:14px">Servicios por tipo</div>
+          <canvas id="chart-tipos" height="200"></canvas>
+        </div>
+        <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px">
+          <div style="font-size:13px;font-weight:700;color:#333;margin-bottom:14px">Servicios por colaborador</div>
+          <canvas id="chart-colab" height="250"></canvas>
+        </div>
+        <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px">
+          <div style="font-size:13px;font-weight:700;color:#333;margin-bottom:14px">Servicios por semana</div>
+          <canvas id="chart-semanas" height="250"></canvas>
+        </div>
+      </div>
+      <div id="graf-by-tech" style="margin-top:16px"></div>
+    </div>
+
     <div id="tab-config" style="display:none">
       <div class="section-label">Cambiar PINs</div>
       <div class="pin-settings">
@@ -313,10 +774,30 @@ function getWeekLabel(){
   const fmt=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
   return 'Semana '+fmt(mon)+' – '+fmt(sun);
 }
-function getWeekStart(){
-  const d=new Date(),day=d.getDay();
-  const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+let weekOffset = 0; // 0 = current week, -1 = last week, etc.
+
+function getWeekStart(offset){
+  offset = offset !== undefined ? offset : weekOffset;
+  const d=new Date();
+  const day=d.getDay();
+  const mon=new Date(d);
+  mon.setDate(d.getDate()-(day===0?6:day-1)+(offset*7));
   mon.setHours(0,0,0,0);return mon;
+}
+function getWeekEnd(offset){
+  const mon=getWeekStart(offset);
+  const sun=new Date(mon);sun.setDate(mon.getDate()+6);sun.setHours(23,59,59,999);
+  return sun;
+}
+function prevWeek(){weekOffset--;renderResumen();}
+function nextWeek(){if(weekOffset<0){weekOffset++;renderResumen();}}
+function goCurrentWeek(){weekOffset=0;renderResumen();}
+
+function getWeekRangeLabel(offset){
+  const mon=getWeekStart(offset);
+  const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+  const fmt=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+  return fmt(mon)+' – '+fmt(sun);
 }
 function scoreOf(r){
   const t=r.tiempo==='ok'?1:r.tiempo==='delay'?0.5:0;
@@ -471,7 +952,8 @@ function buildTabs(){
     {id:'registro',label:'📋 Registrar'},
     {id:'historial',label:'🕐 Historial'},
     {id:'estadisticas',label:'📈 Estadísticas'},
-    {id:'resumen',label:'📊 Resumen'},
+    {id:'graficas',label:'📊 Gráficas'},
+    {id:'resumen',label:'📋 Resumen'},
   ];
   if(currentLevel==='admin'){
     all.push({id:'tecnicos',label:'👥 Técnicos',admin:true});
@@ -482,12 +964,13 @@ function buildTabs(){
 }
 
 function showTab(name){
-  ['registro','historial','estadisticas','resumen','tecnicos','comisiones','config'].forEach(t=>{
+  ['registro','historial','estadisticas','graficas','resumen','tecnicos','comisiones','config'].forEach(t=>{
     const el=document.getElementById('tab-'+t);if(el)el.style.display=t===name?'block':'none';
     const btn=document.getElementById('tabn-'+t);if(btn)btn.classList.toggle('active',t===name);
   });
   if(name==='historial')renderHist();
   if(name==='estadisticas')renderEstadisticas();
+  if(name==='graficas')initGraficas();
   if(name==='resumen')renderResumen();
   if(name==='tecnicos')renderTechsManager();
   if(name==='comisiones')renderComisiones();
@@ -567,10 +1050,40 @@ async function saveRecord(){
   }else{alert('Error al guardar. Verifica tu conexión.');}
 }
 
+function clearHistFilter(){
+  document.getElementById('hist-search').value='';
+  document.getElementById('hist-month').value='';
+  renderHist();
+}
+
 function renderHist(){
   const el=document.getElementById('hist-list');
   if(!records.length){el.innerHTML='<div class="empty-state">Aún no hay evaluaciones registradas.</div>';return;}
-  el.innerHTML=records.map(r=>{
+  const search=(document.getElementById('hist-search')?.value||'').toLowerCase();
+  const monthFilter=document.getElementById('hist-month')?.value||'';
+  let filtered=[...records].sort((a,b)=>b.id-a.id).filter(r=>{
+    const svcs=(r.svcs||(r.svc?[r.svc]:[])).join(' ').toLowerCase();
+    const techs=(r.techs||[]).join(' ').toLowerCase();
+    const vehicle=(r.vehicle||'').toLowerCase();
+    const matchSearch=!search||(svcs+techs+vehicle+r.date).includes(search);
+    const matchMonth=!monthFilter||r.date.startsWith(monthFilter);
+    return matchSearch&&matchMonth;
+  });
+  if(!filtered.length){el.innerHTML='<div class="empty-state">No hay registros con esos filtros.</div>';return;}
+
+  // Group by month
+  const byMonth={};
+  filtered.forEach(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    const key=d.toLocaleDateString('es-MX',{month:'long',year:'numeric'});
+    if(!byMonth[key])byMonth[key]=[];
+    byMonth[key].push(r);
+  });
+
+  el.innerHTML=Object.entries(byMonth).map(([month,recs])=>`
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding:4px 10px;background:#f5f5f5;border-radius:6px;display:inline-block">${month} · ${recs.length} servicio${recs.length!==1?'s':''}</div>
+      ${recs.map(r=>{
     const p=scoreOf(r),open=histOpen[r.id];
     const svcs=r.svcs||(r.svc?[r.svc]:[]);
     const tiempoLabel=r.tiempo==='ok'?'<span class="pill pill-ok">⏱ Dentro del tiempo</span>':r.tiempo==='delay'?'<span class="pill pill-warn">⏱ Fuera de tiempo</span>':'<span class="pill pill-neutral">⏱ Sin evaluar</span>';
@@ -595,7 +1108,16 @@ function renderHist(){
         ${currentLevel==='admin'?`<button class="del-btn" onclick="deleteRecord('${r.id}')">🗑 Eliminar</button>`:''}
       </div>`:''}
     </div>`;
-  }).join('');
+      }).join('')}
+    </div>
+  `).join('');
+
+  // add search listener once
+  const searchEl=document.getElementById('hist-search');
+  if(searchEl&&!searchEl._hasListener){
+    searchEl.addEventListener('input',renderHist);
+    searchEl._hasListener=true;
+  }
 }
 function toggleHist(id){histOpen[id]=!histOpen[id];renderHist();}
 async function deleteRecord(id){
@@ -605,7 +1127,11 @@ async function deleteRecord(id){
 
 function renderResumen(){
   const ws=getWeekStart();
-  const wr=records.filter(r=>new Date(r.date+'T00:00:00')>=ws);
+  const we=getWeekEnd();
+  // Update label
+  const lbl=document.getElementById('week-range-label');
+  if(lbl)lbl.textContent=getWeekRangeLabel(weekOffset);
+  const wr=records.filter(r=>{const d=new Date(r.date+'T00:00:00');return d>=ws&&d<=we;});
   const eq=document.getElementById('equipo-card');
   if(!wr.length){eq.innerHTML='<div class="empty-state">Sin evaluaciones esta semana.</div>';document.getElementById('resumen-grid').innerHTML='';document.getElementById('svc-by-person').innerHTML='';return;}
   const avg=Math.round(wr.reduce((a,r)=>a+scoreOf(r),0)/wr.length);
@@ -648,7 +1174,7 @@ function renderEstadisticas(){
   const wsc=countByService(weekRecs),msc=countByService(monthRecs),mtc=countByTech(monthRecs);
   el.innerHTML=`
     <div class="stats-card">
-      <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:14px">📅 Esta semana</div>
+      <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:14px">📅 Esta semana &nbsp;<span style='font-size:12px;font-weight:400;color:#aaa'>${getWeekRangeLabel(0)}</span></div>
       <div class="stats-grid">
         <div class="stats-item"><div class="stats-num">${weekRecs.length}</div><div class="stats-lbl">Servicios totales</div></div>
         <div class="stats-item"><div class="stats-num">${[...new Set(weekRecs.flatMap(r=>r.techs))].length}</div><div class="stats-lbl">Técnicos activos</div></div>
@@ -669,9 +1195,42 @@ function renderEstadisticas(){
         <table class="stats-table" style="margin-bottom:14px"><thead><tr><th>Servicio</th><th>Cantidad</th></tr></thead><tbody>${msc.map(([s,n])=>`<tr><td>${s}</td><td>${n}</td></tr>`).join('')}</tbody></table>
         <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">Por técnico</div>
         ${mtc.map(([t,n])=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #eee"><div class="res-avatar" style="width:28px;height:28px;font-size:11px;background:${techColor(t)}">${initials(t)}</div><span style="font-size:13px;font-weight:600;flex:1">${t}</span><span style="font-size:14px;font-weight:700">${n} servicio${n!==1?'s':''}</span></div>`).join('')}
+        <div style="font-size:12px;font-weight:700;color:#555;margin:14px 0 6px;text-transform:uppercase">Desglose por semana</div>
+        ${getWeeksOfMonth(activeMonth,activeYear).map(w=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:#f9f9f9;margin-bottom:6px">
+            <span style="font-size:13px;color:#333;font-weight:500">${w.label}</span>
+            <span style="font-size:13px;font-weight:700;color:var(--orange)">${w.count} servicio${w.count!==1?'s':''}</span>
+          </div>`).join('')}
       `:'<div class="empty-state">Sin servicios este mes.</div>'}
     </div>`;
 }
+function getWeeksOfMonth(month, year){
+  // Get all Monday-Sunday weeks that have days in this month
+  const weeks=[];
+  const firstDay=new Date(year,month,1);
+  const lastDay=new Date(year,month+1,0);
+  // Find first Monday on or before the 1st
+  let mon=new Date(firstDay);
+  const dow=mon.getDay();
+  mon.setDate(mon.getDate()-(dow===0?6:dow-1));
+  while(mon<=lastDay){
+    const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    // Only include if week overlaps with the month
+    const wStart=new Date(Math.max(mon,firstDay));
+    const wEnd=new Date(Math.min(sun,lastDay));
+    const fmt=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+    const label=fmt(wStart)+' – '+fmt(wEnd);
+    // Count records in this week
+    const count=records.filter(r=>{
+      const d=new Date(r.date+'T00:00:00');
+      return d>=mon&&d<=sun;
+    }).length;
+    weeks.push({label,count});
+    mon=new Date(mon);mon.setDate(mon.getDate()+7);
+  }
+  return weeks;
+}
+
 function setStatsMonth(m,y){window._statsMonth=m;window._statsYear=y;renderEstadisticas();}
 
 async function renderTechsManager(){
@@ -710,6 +1269,212 @@ async function saveComisiones(){
   await saveComisionesDB();saveLocal('cd_comisiones',comisiones);
   alert('Comisiones de '+t+' guardadas.');renderComisiones();
 }
+
+// ── GRÁFICAS ──
+let chartTipos=null, chartColab=null, chartSemanas=null;
+let chartsTech={};
+
+function setGrafPeriod(p){
+  const now=new Date();
+  let desde,hasta=new Date();
+  if(p==='week'){
+    const day=now.getDay();
+    desde=new Date(now);desde.setDate(now.getDate()-(day===0?6:day-1));
+  } else if(p==='month'){
+    desde=new Date(now.getFullYear(),now.getMonth(),1);
+  } else {
+    // all - find min date in records
+    if(!records.length){desde=new Date(now.getFullYear(),now.getMonth(),1);}
+    else{
+      const dates=records.map(r=>r.date).sort();
+      desde=new Date(dates[0]+'T00:00:00');
+    }
+  }
+  document.getElementById('graf-desde').value=desde.toISOString().split('T')[0];
+  document.getElementById('graf-hasta').value=hasta.toISOString().split('T')[0];
+  renderGraficas();
+}
+
+function initGraficas(){
+  if(!document.getElementById('graf-desde').value){
+    setGrafPeriod('month');
+  } else {
+    renderGraficas();
+  }
+}
+
+function destroyChart(c){if(c){try{c.destroy();}catch(e){}}}
+
+function renderGraficas(){
+  const desde=document.getElementById('graf-desde').value;
+  const hasta=document.getElementById('graf-hasta').value;
+  if(!desde||!hasta){alert('Selecciona el período.');return;}
+
+  const desdeD=new Date(desde+'T00:00:00');
+  const hastaD=new Date(hasta+'T23:59:59');
+
+  const filtered=records.filter(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    return d>=desdeD&&d<=hastaD;
+  });
+
+  const fmtDate=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('graf-period-label').textContent=
+    filtered.length+' servicios del '+fmtDate(desdeD)+' al '+fmtDate(hastaD);
+
+  // Count by service type
+  const byTipo={};
+  filtered.forEach(r=>{
+    const svcs=r.svcs||(r.svc?[r.svc]:[]);
+    svcs.forEach(s=>{byTipo[s]=(byTipo[s]||0)+1;});
+  });
+  const tipoLabels=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]);
+  const tipoData=tipoLabels.map(k=>byTipo[k]);
+
+  // Count by collaborator
+  const byColab={};
+  filtered.forEach(r=>{
+    r.techs.forEach(t=>{byColab[t]=(byColab[t]||0)+1;});
+  });
+  const colabLabels=Object.keys(byColab).sort((a,b)=>byColab[b]-byColab[a]);
+  const colabData=colabLabels.map(k=>byColab[k]);
+  const colabColors=colabLabels.map(t=>techColor(t));
+
+  // Count by week
+  const byWeek={};
+  filtered.forEach(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    const day=d.getDay();
+    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+    const key=mon.toISOString().split('T')[0];
+    const lbl=mon.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+    if(!byWeek[key])byWeek[key]={lbl,count:0};
+    byWeek[key].count++;
+  });
+  const weekEntries=Object.entries(byWeek).sort((a,b)=>a[0].localeCompare(b[0]));
+  const weekLabels=weekEntries.map(([,v])=>v.lbl);
+  const weekData=weekEntries.map(([,v])=>v.count);
+
+  const COLORS=['#F15A22','#185FA5','#3B6D11','#8B2BAB','#BA7517','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45','#E67E22','#2980B9','#27AE60'];
+
+  // Chart 1: Tipos (horizontal bar)
+  destroyChart(chartTipos);
+  const ctx1=document.getElementById('chart-tipos').getContext('2d');
+  chartTipos=new Chart(ctx1,{
+    type:'bar',
+    data:{
+      labels:tipoLabels,
+      datasets:[{
+        label:'Servicios',
+        data:tipoData,
+        backgroundColor:tipoLabels.map((_,i)=>COLORS[i%COLORS.length]),
+        borderRadius:6,
+        borderSkipped:false,
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+    }
+  });
+
+  // Chart 2: Colaboradores (doughnut)
+  destroyChart(chartColab);
+  const ctx2=document.getElementById('chart-colab').getContext('2d');
+  chartColab=new Chart(ctx2,{
+    type:'doughnut',
+    data:{
+      labels:colabLabels,
+      datasets:[{data:colabData,backgroundColor:colabColors,borderWidth:2,borderColor:'#fff'}]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{position:'bottom',labels:{font:{size:12},padding:12}},
+        tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}
+      }
+    }
+  });
+
+  // Chart 3: Por semana (line)
+  destroyChart(chartSemanas);
+  const ctx3=document.getElementById('chart-semanas').getContext('2d');
+  chartSemanas=new Chart(ctx3,{
+    type:'line',
+    data:{
+      labels:weekLabels,
+      datasets:[{
+        label:'Servicios por semana',
+        data:weekData,
+        borderColor:'#F15A22',
+        backgroundColor:'rgba(241,90,34,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:'#F15A22',
+        pointRadius:5,
+        fill:true,
+        tension:0.3
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicios`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Charts per tech: what services each person did
+  const techContainer=document.getElementById('graf-by-tech');
+  // Destroy old charts
+  Object.values(chartsTech).forEach(c=>destroyChart(c));
+  chartsTech={};
+
+  if(!colabLabels.length){techContainer.innerHTML='';return;}
+
+  techContainer.innerHTML=`<div style="font-size:13px;font-weight:700;color:#333;margin-bottom:12px">Servicios por colaborador — detalle</div>`+
+    colabLabels.map(t=>`
+      <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:50%;background:${techColor(t)};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${initials(t)}</div>
+          <span style="font-size:14px;font-weight:700;color:#111">${t}</span>
+          <span style="font-size:12px;color:#888">${byColab[t]} servicio${byColab[t]!==1?'s':''}</span>
+        </div>
+        <canvas id="chart-tech-${t.replace(/\s/g,'_')}" height="120"></canvas>
+      </div>
+    `).join('');
+
+  colabLabels.forEach(t=>{
+    const techRecs=filtered.filter(r=>r.techs.includes(t));
+    const ts={};
+    techRecs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);svcs.forEach(s=>{ts[s]=(ts[s]||0)+1;});});
+    const tLabels=Object.keys(ts).sort((a,b)=>ts[b]-ts[a]);
+    const tData=tLabels.map(k=>ts[k]);
+    const canvasId='chart-tech-'+t.replace(/\s/g,'_');
+    const ctx=document.getElementById(canvasId)?.getContext('2d');
+    if(!ctx)return;
+    chartsTech[t]=new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels:tLabels,
+        datasets:[{
+          label:'Servicios',
+          data:tData,
+          backgroundColor:techColor(t),
+          borderRadius:6,
+          borderSkipped:false,
+        }]
+      },
+      options:{
+        indexAxis:'y',
+        responsive:true,
+        plugins:{legend:{display:false}},
+        scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+      }
+    });
+  });
+}
+
 </script>
 </body>
 </html>
