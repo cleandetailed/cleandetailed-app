@@ -349,15 +349,7 @@ async function saveOperadorRecord(){
   }
 }
 
-// Update PIN config to include operador
-async function savePin(role){
-  const val=document.getElementById('pin-'+role+'-new').value.trim();
-  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
-  pins[role]=val;saveLocal('cd_pins',pins);
-  await savePinsDB();
-  document.getElementById('pin-'+role+'-new').value='';
-  alert('PIN actualizado.');
-}
+
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
@@ -705,15 +697,6 @@ async function saveOperadorRecord(){
   }
 }
 
-// Update PIN config to include operador
-async function savePin(role){
-  const val=document.getElementById('pin-'+role+'-new').value.trim();
-  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
-  pins[role]=val;saveLocal('cd_pins',pins);
-  await savePinsDB();
-  document.getElementById('pin-'+role+'-new').value='';
-  alert('PIN actualizado.');
-}
 
 </script>
 <style>
@@ -2018,15 +2001,6 @@ async function saveOperadorRecord(){
   }
 }
 
-// Update PIN config to include operador
-async function savePin(role){
-  const val=document.getElementById('pin-'+role+'-new').value.trim();
-  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
-  pins[role]=val;saveLocal('cd_pins',pins);
-  await savePinsDB();
-  document.getElementById('pin-'+role+'-new').value='';
-  alert('PIN actualizado.');
-}
 
 </script>
 </body>
