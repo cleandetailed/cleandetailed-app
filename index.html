@@ -96,7 +96,7 @@ function renderGraficas(){
   destroyChart(chartTipos);
   const ctx1=document.getElementById('chart-tipos').getContext('2d');
   chartTipos=new Chart(ctx1,{
-    type:'bar',
+    type:'line',
     data:{
       labels:tipoLabels,
       datasets:[{
@@ -108,10 +108,9 @@ function renderGraficas(){
       }]
     },
     options:{
-      indexAxis:'y',
       responsive:true,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
-      scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
     }
   });
 
@@ -119,17 +118,25 @@ function renderGraficas(){
   destroyChart(chartColab);
   const ctx2=document.getElementById('chart-colab').getContext('2d');
   chartColab=new Chart(ctx2,{
-    type:'doughnut',
+    type:'line',
     data:{
       labels:colabLabels,
-      datasets:[{data:colabData,backgroundColor:colabColors,borderWidth:2,borderColor:'#fff'}]
+      datasets:[{
+        label:'Servicios',
+        data:colabData,
+        borderColor:'#185FA5',
+        backgroundColor:'rgba(24,95,165,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:colabColors,
+        pointRadius:6,
+        fill:true,
+        tension:0.3
+      }]
     },
     options:{
       responsive:true,
-      plugins:{
-        legend:{position:'bottom',labels:{font:{size:12},padding:12}},
-        tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}
-      }
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
     }
   });
 
@@ -189,22 +196,25 @@ function renderGraficas(){
     const ctx=document.getElementById(canvasId)?.getContext('2d');
     if(!ctx)return;
     chartsTech[t]=new Chart(ctx,{
-      type:'bar',
+      type:'line',
       data:{
         labels:tLabels,
         datasets:[{
           label:'Servicios',
           data:tData,
-          backgroundColor:techColor(t),
-          borderRadius:6,
-          borderSkipped:false,
+          borderColor:techColor(t),
+          backgroundColor:techColor(t)+'22',
+          borderWidth:2.5,
+          pointBackgroundColor:techColor(t),
+          pointRadius:5,
+          fill:true,
+          tension:0.3
         }]
       },
       options:{
-        indexAxis:'y',
         responsive:true,
         plugins:{legend:{display:false}},
-        scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+        scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
       }
     });
   });
@@ -303,7 +313,7 @@ function renderGraficas(){
   destroyChart(chartTipos);
   const ctx1=document.getElementById('chart-tipos').getContext('2d');
   chartTipos=new Chart(ctx1,{
-    type:'bar',
+    type:'line',
     data:{
       labels:tipoLabels,
       datasets:[{
@@ -315,10 +325,9 @@ function renderGraficas(){
       }]
     },
     options:{
-      indexAxis:'y',
       responsive:true,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
-      scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
     }
   });
 
@@ -326,17 +335,25 @@ function renderGraficas(){
   destroyChart(chartColab);
   const ctx2=document.getElementById('chart-colab').getContext('2d');
   chartColab=new Chart(ctx2,{
-    type:'doughnut',
+    type:'line',
     data:{
       labels:colabLabels,
-      datasets:[{data:colabData,backgroundColor:colabColors,borderWidth:2,borderColor:'#fff'}]
+      datasets:[{
+        label:'Servicios',
+        data:colabData,
+        borderColor:'#185FA5',
+        backgroundColor:'rgba(24,95,165,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:colabColors,
+        pointRadius:6,
+        fill:true,
+        tension:0.3
+      }]
     },
     options:{
       responsive:true,
-      plugins:{
-        legend:{position:'bottom',labels:{font:{size:12},padding:12}},
-        tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}
-      }
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
     }
   });
 
@@ -396,22 +413,25 @@ function renderGraficas(){
     const ctx=document.getElementById(canvasId)?.getContext('2d');
     if(!ctx)return;
     chartsTech[t]=new Chart(ctx,{
-      type:'bar',
+      type:'line',
       data:{
         labels:tLabels,
         datasets:[{
           label:'Servicios',
           data:tData,
-          backgroundColor:techColor(t),
-          borderRadius:6,
-          borderSkipped:false,
+          borderColor:techColor(t),
+          backgroundColor:techColor(t)+'22',
+          borderWidth:2.5,
+          pointBackgroundColor:techColor(t),
+          pointRadius:5,
+          fill:true,
+          tension:0.3
         }]
       },
       options:{
-        indexAxis:'y',
         responsive:true,
         plugins:{legend:{display:false}},
-        scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+        scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
       }
     });
   });
@@ -746,7 +766,7 @@ const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 const TECH_COLORS=['#185FA5','#3B6D11','#8B2BAB','#BA7517','#A32D2D','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45'];
-const SERVICES_LIST=['Lavado Exterior','Detallado Básico','Detallado Prime','Interior Full','Lavado de Vestiduras','Mantenimiento Interior','Recubrimiento Cerámico','Corrección de Faros','Limpieza de Motor','Corrección de Pintura','Corrección y Sellador','Encerado con Máquina','Encerado'];
+const SERVICES_LIST=['Lavado Exterior','Detallado Básico','Detallado Prime','Interior Full','Lavado de Vestiduras','Mantenimiento Interior','Recubrimiento Cerámico','Corrección de Faros','Limpieza de Motor','Corrección de Pintura','Corrección y Sellador','Encerado con Máquina','Encerado','Mantenimiento Booster','PPF'];
 const CHK={
   calidad:['Acabado impecable — sin residuos de producto ni marcas visibles','Sin defectos en zonas pequeñas o de difícil acceso','Detallado completo sin áreas omitidas o descuidadas'],
   proceso:['Se siguió el checklist de proceso paso a paso','Se documentó con foto cualquier daño previo al vehículo','Se usaron los productos y herramientas correctas'],
@@ -1361,7 +1381,7 @@ function renderGraficas(){
   destroyChart(chartTipos);
   const ctx1=document.getElementById('chart-tipos').getContext('2d');
   chartTipos=new Chart(ctx1,{
-    type:'bar',
+    type:'line',
     data:{
       labels:tipoLabels,
       datasets:[{
@@ -1373,10 +1393,9 @@ function renderGraficas(){
       }]
     },
     options:{
-      indexAxis:'y',
       responsive:true,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
-      scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
     }
   });
 
@@ -1384,17 +1403,25 @@ function renderGraficas(){
   destroyChart(chartColab);
   const ctx2=document.getElementById('chart-colab').getContext('2d');
   chartColab=new Chart(ctx2,{
-    type:'doughnut',
+    type:'line',
     data:{
       labels:colabLabels,
-      datasets:[{data:colabData,backgroundColor:colabColors,borderWidth:2,borderColor:'#fff'}]
+      datasets:[{
+        label:'Servicios',
+        data:colabData,
+        borderColor:'#185FA5',
+        backgroundColor:'rgba(24,95,165,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:colabColors,
+        pointRadius:6,
+        fill:true,
+        tension:0.3
+      }]
     },
     options:{
       responsive:true,
-      plugins:{
-        legend:{position:'bottom',labels:{font:{size:12},padding:12}},
-        tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}
-      }
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
     }
   });
 
@@ -1454,22 +1481,25 @@ function renderGraficas(){
     const ctx=document.getElementById(canvasId)?.getContext('2d');
     if(!ctx)return;
     chartsTech[t]=new Chart(ctx,{
-      type:'bar',
+      type:'line',
       data:{
         labels:tLabels,
         datasets:[{
           label:'Servicios',
           data:tData,
-          backgroundColor:techColor(t),
-          borderRadius:6,
-          borderSkipped:false,
+          borderColor:techColor(t),
+          backgroundColor:techColor(t)+'22',
+          borderWidth:2.5,
+          pointBackgroundColor:techColor(t),
+          pointRadius:5,
+          fill:true,
+          tension:0.3
         }]
       },
       options:{
-        indexAxis:'y',
         responsive:true,
         plugins:{legend:{display:false}},
-        scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+        scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
       }
     });
   });
