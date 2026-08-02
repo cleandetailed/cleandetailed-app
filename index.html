@@ -230,10 +230,12 @@ function checkOperadorPin(val){
   const wrap = document.getElementById('op-name-wrap');
   if(!wrap)return;
   if(val.length>=4){
-    // populate name list from techs
     const sel=document.getElementById('op-name-select');
-    if(sel&&sel.options.length<=1){
-      techs.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
+    if(sel){
+      // Clear and repopulate
+      while(sel.options.length>1)sel.remove(1);
+      const techList=techs&&techs.length?techs:load('cd_techs',['Jose Daniel','Saul','Técnico 1']);
+      techList.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
     }
     wrap.style.display='flex';
   } else {
@@ -584,10 +586,12 @@ function checkOperadorPin(val){
   const wrap = document.getElementById('op-name-wrap');
   if(!wrap)return;
   if(val.length>=4){
-    // populate name list from techs
     const sel=document.getElementById('op-name-select');
-    if(sel&&sel.options.length<=1){
-      techs.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
+    if(sel){
+      // Clear and repopulate
+      while(sel.options.length>1)sel.remove(1);
+      const techList=techs&&techs.length?techs:load('cd_techs',['Jose Daniel','Saul','Técnico 1']);
+      techList.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
     }
     wrap.style.display='flex';
   } else {
@@ -1895,10 +1899,12 @@ function checkOperadorPin(val){
   const wrap = document.getElementById('op-name-wrap');
   if(!wrap)return;
   if(val.length>=4){
-    // populate name list from techs
     const sel=document.getElementById('op-name-select');
-    if(sel&&sel.options.length<=1){
-      techs.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
+    if(sel){
+      // Clear and repopulate
+      while(sel.options.length>1)sel.remove(1);
+      const techList=techs&&techs.length?techs:load('cd_techs',['Jose Daniel','Saul','Técnico 1']);
+      techList.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
     }
     wrap.style.display='flex';
   } else {
