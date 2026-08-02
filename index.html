@@ -4,354 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Clean Detailed — Sistema de Evaluación</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-// ── GRÁFICAS ──
-let chartTipos=null, chartColab=null, chartSemanas=null;
-let chartsTech={};
-
-function setGrafPeriod(p){
-  const now=new Date();
-  let desde,hasta=new Date();
-  if(p==='week'){
-    const day=now.getDay();
-    desde=new Date(now);desde.setDate(now.getDate()-(day===0?6:day-1));
-  } else if(p==='month'){
-    desde=new Date(now.getFullYear(),now.getMonth(),1);
-  } else {
-    // all - find min date in records
-    if(!records.length){desde=new Date(now.getFullYear(),now.getMonth(),1);}
-    else{
-      const dates=records.map(r=>r.date).sort();
-      desde=new Date(dates[0]+'T00:00:00');
-    }
-  }
-  document.getElementById('graf-desde').value=desde.toISOString().split('T')[0];
-  document.getElementById('graf-hasta').value=hasta.toISOString().split('T')[0];
-  renderGraficas();
-}
-
-function initGraficas(){
-  if(!document.getElementById('graf-desde').value){
-    setGrafPeriod('month');
-  } else {
-    renderGraficas();
-  }
-}
-
-function destroyChart(c){if(c){try{c.destroy();}catch(e){}}}
-
-function renderGraficas(){
-  const desde=document.getElementById('graf-desde').value;
-  const hasta=document.getElementById('graf-hasta').value;
-  if(!desde||!hasta){alert('Selecciona el período.');return;}
-
-  const desdeD=new Date(desde+'T00:00:00');
-  const hastaD=new Date(hasta+'T23:59:59');
-
-  const filtered=records.filter(r=>{
-    const d=new Date(r.date+'T00:00:00');
-    return d>=desdeD&&d<=hastaD;
-  });
-
-  const fmtDate=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
-  document.getElementById('graf-period-label').textContent=
-    filtered.length+' servicios del '+fmtDate(desdeD)+' al '+fmtDate(hastaD);
-
-  // Count by service type
-  const byTipo={};
-  filtered.forEach(r=>{
-    const svcs=r.svcs||(r.svc?[r.svc]:[]);
-    svcs.forEach(s=>{byTipo[s]=(byTipo[s]||0)+1;});
-  });
-  const tipoLabels=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]);
-  const tipoData=tipoLabels.map(k=>byTipo[k]);
-
-  // Count by collaborator
-  const byColab={};
-  filtered.forEach(r=>{
-    r.techs.forEach(t=>{byColab[t]=(byColab[t]||0)+1;});
-  });
-  const colabLabels=Object.keys(byColab).sort((a,b)=>byColab[b]-byColab[a]);
-  const colabData=colabLabels.map(k=>byColab[k]);
-  const colabColors=colabLabels.map(t=>techColor(t));
-
-  // Count by week
-  const byWeek={};
-  filtered.forEach(r=>{
-    const d=new Date(r.date+'T00:00:00');
-    const day=d.getDay();
-    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
-    const key=mon.toISOString().split('T')[0];
-    const lbl=mon.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
-    if(!byWeek[key])byWeek[key]={lbl,count:0};
-    byWeek[key].count++;
-  });
-  const weekEntries=Object.entries(byWeek).sort((a,b)=>a[0].localeCompare(b[0]));
-  const weekLabels=weekEntries.map(([,v])=>v.lbl);
-  const weekData=weekEntries.map(([,v])=>v.count);
-
-  const COLORS=['#F15A22','#185FA5','#3B6D11','#8B2BAB','#BA7517','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45','#E67E22','#2980B9','#27AE60'];
-
-  // Chart 1: Tipos (horizontal bar)
-  destroyChart(chartTipos);
-  const ctx1=document.getElementById('chart-tipos').getContext('2d');
-  chartTipos=new Chart(ctx1,{
-    type:'line',
-    data:{
-      labels:tipoLabels,
-      datasets:[{
-        label:'Servicios',
-        data:tipoData,
-        backgroundColor:tipoLabels.map((_,i)=>COLORS[i%COLORS.length]),
-        borderRadius:6,
-        borderSkipped:false,
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
-      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-    }
-  });
-
-  // Chart 2: Colaboradores (doughnut)
-  destroyChart(chartColab);
-  const ctx2=document.getElementById('chart-colab').getContext('2d');
-  chartColab=new Chart(ctx2,{
-    type:'line',
-    data:{
-      labels:colabLabels,
-      datasets:[{
-        label:'Servicios',
-        data:colabData,
-        borderColor:'#185FA5',
-        backgroundColor:'rgba(24,95,165,0.1)',
-        borderWidth:2.5,
-        pointBackgroundColor:colabColors,
-        pointRadius:6,
-        fill:true,
-        tension:0.3
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}},
-      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-    }
-  });
-
-  // Chart 3: Por semana (line)
-  destroyChart(chartSemanas);
-  const ctx3=document.getElementById('chart-semanas').getContext('2d');
-  chartSemanas=new Chart(ctx3,{
-    type:'line',
-    data:{
-      labels:weekLabels,
-      datasets:[{
-        label:'Servicios por semana',
-        data:weekData,
-        borderColor:'#F15A22',
-        backgroundColor:'rgba(241,90,34,0.1)',
-        borderWidth:2.5,
-        pointBackgroundColor:'#F15A22',
-        pointRadius:5,
-        fill:true,
-        tension:0.3
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicios`}}},
-      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-    }
-  });
-
-  // Charts per tech: what services each person did
-  const techContainer=document.getElementById('graf-by-tech');
-  // Destroy old charts
-  Object.values(chartsTech).forEach(c=>destroyChart(c));
-  chartsTech={};
-
-  if(!colabLabels.length){techContainer.innerHTML='';return;}
-
-  techContainer.innerHTML=`<div style="font-size:13px;font-weight:700;color:#333;margin-bottom:12px">Servicios por colaborador — detalle</div>`+
-    colabLabels.map(t=>`
-      <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-          <div style="width:32px;height:32px;border-radius:50%;background:${techColor(t)};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${initials(t)}</div>
-          <span style="font-size:14px;font-weight:700;color:#111">${t}</span>
-          <span style="font-size:12px;color:#888">${byColab[t]} servicio${byColab[t]!==1?'s':''}</span>
-        </div>
-        <canvas id="chart-tech-${t.replace(/\s/g,'_')}" height="120"></canvas>
-      </div>
-    `).join('');
-
-  colabLabels.forEach(t=>{
-    const techRecs=filtered.filter(r=>r.techs.includes(t));
-    const ts={};
-    techRecs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);svcs.forEach(s=>{ts[s]=(ts[s]||0)+1;});});
-    const tLabels=Object.keys(ts).sort((a,b)=>ts[b]-ts[a]);
-    const tData=tLabels.map(k=>ts[k]);
-    const canvasId='chart-tech-'+t.replace(/\s/g,'_');
-    const ctx=document.getElementById(canvasId)?.getContext('2d');
-    if(!ctx)return;
-    chartsTech[t]=new Chart(ctx,{
-      type:'line',
-      data:{
-        labels:tLabels,
-        datasets:[{
-          label:'Servicios',
-          data:tData,
-          borderColor:techColor(t),
-          backgroundColor:techColor(t)+'22',
-          borderWidth:2.5,
-          pointBackgroundColor:techColor(t),
-          pointRadius:5,
-          fill:true,
-          tension:0.3
-        }]
-      },
-      options:{
-        responsive:true,
-        plugins:{legend:{display:false}},
-        scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-      }
-    });
-  });
-}
-
-
-// ── OPERADOR ──
-let opSelectedSvc = '';
-let opFotosEntrada = [];
-let opFotosSalida = [];
-
-function checkOperadorPin(val){
-  const wrap = document.getElementById('op-name-wrap');
-  if(!wrap)return;
-  if(val.length>=4){
-    const sel=document.getElementById('op-name-select');
-    if(sel){
-      // Clear and repopulate
-      while(sel.options.length>1)sel.remove(1);
-      const techList=techs&&techs.length?techs:load('cd_techs',['Jose Daniel','Saul','Técnico 1']);
-      techList.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
-    }
-    wrap.style.display='flex';
-  } else {
-    wrap.style.display='none';
-  }
-}
-
-function renderOpSvcList(){
-  const el=document.getElementById('op-svc-list');
-  if(!el)return;
-  el.innerHTML=SERVICES_LIST.map(s=>`
-    <div onclick="selectOpSvc('${s}')" style="padding:10px 14px;cursor:pointer;font-size:13px;color:#222;border-bottom:1px solid #f0f0f0;background:${opSelectedSvc===s?'#FFF0EB':'#fff'}">${s}</div>
-  `).join('');
-}
-function selectOpSvc(s){
-  opSelectedSvc=s;
-  const lbl=document.getElementById('op-svc-label');
-  if(lbl){lbl.textContent=s;lbl.style.color='#111';}
-  toggleOpSvcDropdown();
-}
-function toggleOpSvcDropdown(){
-  const dd=document.getElementById('op-svc-dropdown');
-  if(!dd)return;
-  dd.style.display=dd.style.display==='block'?'none':'block';
-  renderOpSvcList();
-}
-
-function addPhotoPreview(file, gridId, type){
-  const grid=document.getElementById(gridId);
-  if(!grid)return;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const div=document.createElement('div');
-    div.style.cssText='aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative';
-    div.innerHTML=`<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
-    const addBtn=grid.querySelector('label');
-    grid.insertBefore(div,addBtn);
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleFotos(input, type){
-  const files=Array.from(input.files);
-  const gridId=type==='entrada'?'op-fotos-entrada-grid':'op-fotos-salida-grid';
-  files.forEach(f=>{
-    if(type==='entrada') opFotosEntrada.push(f);
-    else opFotosSalida.push(f);
-    addPhotoPreview(f,gridId,type);
-  });
-  input.value='';
-}
-
-async function uploadFotos(files, prefix){
-  const urls=[];
-  for(const file of files){
-    const ext=file.name.split('.').pop();
-    const path=`${prefix}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const {data,error}=await sb.storage.from('fotos-servicios').upload(path,file,{contentType:file.type});
-    if(!error){
-      const {data:urlData}=sb.storage.from('fotos-servicios').getPublicUrl(path);
-      urls.push(urlData.publicUrl);
-    }
-  }
-  return urls;
-}
-
-async function saveOperadorRecord(){
-  const vehicle=document.getElementById('op-vehicle')?.value.trim();
-  const nota=document.getElementById('op-nota')?.value.trim();
-  if(!opSelectedSvc){alert('Selecciona un servicio.');return;}
-  if(!vehicle){alert('Escribe el vehículo.');return;}
-
-  const statusEl=document.getElementById('op-upload-status');
-  if(statusEl)statusEl.style.display='block';
-
-  try{
-    // Upload photos
-    const urlsEntrada=await uploadFotos(opFotosEntrada,'entrada');
-    const urlsSalida=await uploadFotos(opFotosSalida,'salida');
-
-    const today=new Date().toISOString().split('T')[0];
-    const {error}=await sb.from('records').insert([{
-      svcs:JSON.stringify([opSelectedSvc]),
-      vehicle,
-      date:today,
-      notes:nota||'',
-      techs:JSON.stringify([window._operadorName||'Operador']),
-      tiempo:null,
-      chk:JSON.stringify({calidad:[false,false,false],proceso:[false,false,false]}),
-      fotos_entrada:JSON.stringify(urlsEntrada),
-      fotos_salida:JSON.stringify(urlsSalida),
-      nota_recepcion:nota||''
-    }]);
-
-    if(error)throw error;
-
-    // Reset
-    opSelectedSvc='';opFotosEntrada=[];opFotosSalida=[];
-    if(document.getElementById('op-vehicle'))document.getElementById('op-vehicle').value='';
-    if(document.getElementById('op-nota'))document.getElementById('op-nota').value='';
-    if(document.getElementById('op-svc-label')){document.getElementById('op-svc-label').textContent='Selecciona...';document.getElementById('op-svc-label').style.color='#888';}
-    document.getElementById('op-fotos-entrada-grid').innerHTML=`<label style="aspect-ratio:1;background:#E6F1FB;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #185FA5"><span style="color:#185FA5;font-size:22px">+</span><span style="font-size:10px;color:#185FA5">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'entrada')"></label>`;
-    document.getElementById('op-fotos-salida-grid').innerHTML=`<label style="aspect-ratio:1;background:#EAF3DE;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #3B6D11"><span style="color:#3B6D11;font-size:22px">+</span><span style="font-size:10px;color:#3B6D11">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'salida')"></label>`;
-
-    if(statusEl)statusEl.style.display='none';
-    alert('✓ Servicio registrado correctamente.');
-    await loadRecords();
-  }catch(e){
-    if(statusEl)statusEl.style.display='none';
-    alert('Error al guardar: '+e.message);
-  }
-}
-
-
-
-</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
 // ── GRÁFICAS ──
 let chartTipos=null, chartColab=null, chartSemanas=null;
@@ -569,133 +222,7 @@ function renderGraficas(){
 }
 
 
-// ── OPERADOR ──
-let opSelectedSvc = '';
-let opFotosEntrada = [];
-let opFotosSalida = [];
 
-function checkOperadorPin(val){
-  const wrap = document.getElementById('op-name-wrap');
-  if(!wrap)return;
-  if(val.length>=4){
-    const sel=document.getElementById('op-name-select');
-    if(sel){
-      // Clear and repopulate
-      while(sel.options.length>1)sel.remove(1);
-      const techList=techs&&techs.length?techs:load('cd_techs',['Jose Daniel','Saul','Técnico 1']);
-      techList.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
-    }
-    wrap.style.display='flex';
-  } else {
-    wrap.style.display='none';
-  }
-}
-
-function renderOpSvcList(){
-  const el=document.getElementById('op-svc-list');
-  if(!el)return;
-  el.innerHTML=SERVICES_LIST.map(s=>`
-    <div onclick="selectOpSvc('${s}')" style="padding:10px 14px;cursor:pointer;font-size:13px;color:#222;border-bottom:1px solid #f0f0f0;background:${opSelectedSvc===s?'#FFF0EB':'#fff'}">${s}</div>
-  `).join('');
-}
-function selectOpSvc(s){
-  opSelectedSvc=s;
-  const lbl=document.getElementById('op-svc-label');
-  if(lbl){lbl.textContent=s;lbl.style.color='#111';}
-  toggleOpSvcDropdown();
-}
-function toggleOpSvcDropdown(){
-  const dd=document.getElementById('op-svc-dropdown');
-  if(!dd)return;
-  dd.style.display=dd.style.display==='block'?'none':'block';
-  renderOpSvcList();
-}
-
-function addPhotoPreview(file, gridId, type){
-  const grid=document.getElementById(gridId);
-  if(!grid)return;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const div=document.createElement('div');
-    div.style.cssText='aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative';
-    div.innerHTML=`<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
-    const addBtn=grid.querySelector('label');
-    grid.insertBefore(div,addBtn);
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleFotos(input, type){
-  const files=Array.from(input.files);
-  const gridId=type==='entrada'?'op-fotos-entrada-grid':'op-fotos-salida-grid';
-  files.forEach(f=>{
-    if(type==='entrada') opFotosEntrada.push(f);
-    else opFotosSalida.push(f);
-    addPhotoPreview(f,gridId,type);
-  });
-  input.value='';
-}
-
-async function uploadFotos(files, prefix){
-  const urls=[];
-  for(const file of files){
-    const ext=file.name.split('.').pop();
-    const path=`${prefix}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const {data,error}=await sb.storage.from('fotos-servicios').upload(path,file,{contentType:file.type});
-    if(!error){
-      const {data:urlData}=sb.storage.from('fotos-servicios').getPublicUrl(path);
-      urls.push(urlData.publicUrl);
-    }
-  }
-  return urls;
-}
-
-async function saveOperadorRecord(){
-  const vehicle=document.getElementById('op-vehicle')?.value.trim();
-  const nota=document.getElementById('op-nota')?.value.trim();
-  if(!opSelectedSvc){alert('Selecciona un servicio.');return;}
-  if(!vehicle){alert('Escribe el vehículo.');return;}
-
-  const statusEl=document.getElementById('op-upload-status');
-  if(statusEl)statusEl.style.display='block';
-
-  try{
-    // Upload photos
-    const urlsEntrada=await uploadFotos(opFotosEntrada,'entrada');
-    const urlsSalida=await uploadFotos(opFotosSalida,'salida');
-
-    const today=new Date().toISOString().split('T')[0];
-    const {error}=await sb.from('records').insert([{
-      svcs:JSON.stringify([opSelectedSvc]),
-      vehicle,
-      date:today,
-      notes:nota||'',
-      techs:JSON.stringify([window._operadorName||'Operador']),
-      tiempo:null,
-      chk:JSON.stringify({calidad:[false,false,false],proceso:[false,false,false]}),
-      fotos_entrada:JSON.stringify(urlsEntrada),
-      fotos_salida:JSON.stringify(urlsSalida),
-      nota_recepcion:nota||''
-    }]);
-
-    if(error)throw error;
-
-    // Reset
-    opSelectedSvc='';opFotosEntrada=[];opFotosSalida=[];
-    if(document.getElementById('op-vehicle'))document.getElementById('op-vehicle').value='';
-    if(document.getElementById('op-nota'))document.getElementById('op-nota').value='';
-    if(document.getElementById('op-svc-label')){document.getElementById('op-svc-label').textContent='Selecciona...';document.getElementById('op-svc-label').style.color='#888';}
-    document.getElementById('op-fotos-entrada-grid').innerHTML=`<label style="aspect-ratio:1;background:#E6F1FB;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #185FA5"><span style="color:#185FA5;font-size:22px">+</span><span style="font-size:10px;color:#185FA5">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'entrada')"></label>`;
-    document.getElementById('op-fotos-salida-grid').innerHTML=`<label style="aspect-ratio:1;background:#EAF3DE;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #3B6D11"><span style="color:#3B6D11;font-size:22px">+</span><span style="font-size:10px;color:#3B6D11">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'salida')"></label>`;
-
-    if(statusEl)statusEl.style.display='none';
-    alert('✓ Servicio registrado correctamente.');
-    await loadRecords();
-  }catch(e){
-    if(statusEl)statusEl.style.display='none';
-    alert('Error al guardar: '+e.message);
-  }
-}
 
 
 </script>
@@ -857,13 +384,7 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:var(--orange)}
     <div style="text-align:center;margin-top:4px">
       <div style="font-size:11px;font-weight:700;color:#888;letter-spacing:.1em;text-transform:uppercase;">Sistema de Evaluación de Servicios</div>
     </div>
-    <div id="op-name-wrap" style="width:100%;display:none;flex-direction:column;gap:6px">
-      <label style="font-size:12px;color:#888;font-weight:600">¿Quién eres?</label>
-      <select id="op-name-select" style="width:100%;background:#f5f5f5;color:#111;border:1px solid #ddd;border-radius:8px;padding:10px;font-size:13px;font-family:Arial,sans-serif">
-        <option value="">Selecciona tu nombre...</option>
-      </select>
-    </div>
-    <input class="pin-input" type="password" id="pin-input" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()" oninput="checkOperadorPin(this.value)">
+    <input class="pin-input" type="password" id="pin-input" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="login-btn" onclick="doLogin()">Entrar</button>
     <div class="login-error" id="login-error">PIN incorrecto. Intenta de nuevo.</div>
   </div>
@@ -1016,92 +537,12 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:var(--orange)}
       <div id="graf-by-tech" style="margin-top:16px"></div>
     </div>
 
-    <div id="tab-operador" style="display:none">
-      <div id="readonly-notice" style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:8px 14px;font-size:12px;color:#795548;margin-bottom:12px">
-        👋 Hola <strong id="op-name-display"></strong> — registra el servicio que estás realizando
-      </div>
-      <div class="form-card">
-        <div class="form-row">
-          <div class="form-group">
-            <label>Vehículo</label>
-            <input type="text" id="op-vehicle" placeholder="Ej. Honda Civic gris">
-          </div>
-          <div class="form-group">
-            <label>Servicio realizado</label>
-            <div id="op-svc-dropdown-wrap" style="position:relative">
-              <div onclick="toggleOpSvcDropdown()" style="padding:8px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:space-between;min-height:38px">
-                <div id="op-svc-label" style="font-size:13px;color:#888">Selecciona...</div>
-                <span style="color:#888;font-size:12px">▼</span>
-              </div>
-              <div id="op-svc-dropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:200;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:200px;overflow-y:auto;margin-top:2px">
-                <div id="op-svc-list"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Fotos entrada -->
-        <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
-          <div style="background:#185FA5;padding:10px 14px;display:flex;align-items:center;gap:8px">
-            <span style="color:#fff;font-size:14px">📷</span>
-            <span style="color:#fff;font-size:13px;font-weight:500">Fotos de entrada</span>
-            <span style="color:#B5D4F4;font-size:11px">Estado del vehículo al recibirlo</span>
-          </div>
-          <div style="padding:12px;background:#f9f9f9">
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px" id="op-fotos-entrada-grid">
-              <label style="aspect-ratio:1;background:#E6F1FB;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #185FA5">
-                <span style="color:#185FA5;font-size:22px">+</span>
-                <span style="font-size:10px;color:#185FA5">Foto</span>
-                <input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'entrada')">
-              </label>
-            </div>
-            <div style="font-size:11px;color:#888">Documenta rayones, golpes o daños antes de empezar</div>
-          </div>
-        </div>
-
-        <!-- Nota recepcion -->
-        <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
-          <div style="background:#BA7517;padding:10px 14px;display:flex;align-items:center;gap:8px">
-            <span style="color:#fff;font-size:14px">⚠️</span>
-            <span style="color:#fff;font-size:13px;font-weight:500">Nota de recepción</span>
-            <span style="color:#FAC775;font-size:11px">Daños, faltantes o detalles importantes</span>
-          </div>
-          <div style="padding:12px;background:#f9f9f9">
-            <textarea id="op-nota" rows="3" placeholder="Ej: Rin trasero izquierdo con raspón. Tapete del conductor roto. Cliente lo sabe..." style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;font-family:Arial,sans-serif;resize:none"></textarea>
-          </div>
-        </div>
-
-        <!-- Fotos salida -->
-        <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
-          <div style="background:#3B6D11;padding:10px 14px;display:flex;align-items:center;gap:8px">
-            <span style="color:#fff;font-size:14px">✅</span>
-            <span style="color:#fff;font-size:13px;font-weight:500">Fotos de salida</span>
-            <span style="color:#C0DD97;font-size:11px">Resultado del servicio terminado</span>
-          </div>
-          <div style="padding:12px;background:#f9f9f9">
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px" id="op-fotos-salida-grid">
-              <label style="aspect-ratio:1;background:#EAF3DE;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #3B6D11">
-                <span style="color:#3B6D11;font-size:22px">+</span>
-                <span style="font-size:10px;color:#3B6D11">Foto</span>
-                <input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'salida')">
-              </label>
-            </div>
-            <div style="font-size:11px;color:#888">Sube fotos del resultado antes de entregar el vehículo</div>
-          </div>
-        </div>
-
-        <div id="op-upload-status" style="display:none;text-align:center;font-size:13px;color:#888;padding:8px">Subiendo fotos...</div>
-        <button class="save-btn" onclick="saveOperadorRecord()" style="width:100%">💾 Registrar servicio</button>
-      </div>
-    </div>
-
     <div id="tab-config" style="display:none">
       <div class="section-label">Cambiar PINs</div>
       <div class="pin-settings">
         <div class="pin-row"><label>🔵 PIN Coordinador</label><input type="password" id="pin-coord-new" placeholder="Nuevo PIN" maxlength="6"><button class="secondary-btn" onclick="savePin('coord')">Guardar</button></div>
         <div class="pin-row"><label>🟢 PIN Admin / CEO</label><input type="password" id="pin-admin-new" placeholder="Nuevo PIN" maxlength="6"><button class="secondary-btn" onclick="savePin('admin')">Guardar</button></div>
-        <div class="pin-row"><label>🟠 PIN Operadores</label><input type="password" id="pin-operador-new" placeholder="Nuevo PIN" maxlength="6"><button class="secondary-btn" onclick="savePin('operador')">Guardar</button></div>
-        <p style="font-size:12px;color:#aaa;margin-top:8px">El PIN actual no se muestra por seguridad. PIN operadores por defecto: 0000</p>
+        <p style="font-size:12px;color:#aaa;margin-top:8px">El PIN actual no se muestra por seguridad.</p>
       </div>
     </div>
   </div>
@@ -1124,7 +565,7 @@ function saveLocal(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){
 
 let techs=load('cd_techs',['Jose Daniel','Técnico 1','Saul']);
 let records=[];
-let pins=load('cd_pins',{coord:'1234',admin:'9999',operador:'0000'});
+let pins=load('cd_pins',{coord:'1234',admin:'9999'});
 let comisiones=load('cd_comisiones',{});
 let currentLevel=null;
 let selectedSvcs=[],selectedTechs=[],tiempoState=null;
@@ -1246,11 +687,7 @@ async function saveTechsDB(){
 async function loadPins(){
   try{
     const {data,error}=await sb.from('config').select('*').eq('key','pins').single();
-    if(!error&&data){
-      const loaded=JSON.parse(data.value);
-      // Merge with defaults so operador key is always available
-      pins={coord:'1234',admin:'9999',operador:'0000',...loaded};
-    }
+    if(!error&&data)pins=JSON.parse(data.value);
   }catch(e){}
 }
 async function savePinsDB(){
@@ -1282,34 +719,7 @@ async function doLogin(){
   const err=document.getElementById('login-error');
   if(pin===pins.admin){currentLevel='admin';startApp();}
   else if(pin===pins.coord){currentLevel='coord';startApp();}
-  else if(pin===(pins.operador||'0000')){
-    const sel=document.getElementById('op-name-select');
-    const name=sel?sel.value:'';
-    if(!name){
-      err.textContent='Selecciona tu nombre primero.';
-      err.style.display='block';
-      setTimeout(()=>{err.style.display='none';err.textContent='PIN incorrecto. Intenta de nuevo.';},2000);
-      return;
-    }
-    currentLevel='operador';
-    window._operadorName=name;
-    startApp();
-  }
   else{err.style.display='block';setTimeout(()=>err.style.display='none',2000);}
-}
-function logout(){
-  currentLevel=null;
-  document.getElementById('app').style.display='none';
-  document.getElementById('login-screen').style.display='flex';
-  document.getElementById('pin-input').value='';
-}
-async function savePin(role){
-  const val=document.getElementById('pin-'+role+'-new').value.trim();
-  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
-  pins[role]=val;saveLocal('cd_pins',pins);
-  await savePinsDB();
-  document.getElementById('pin-'+role+'-new').value='';
-  alert('PIN actualizado.');
 }
 
 async function startApp(){
@@ -1324,15 +734,7 @@ async function startApp(){
   // Load all data from Supabase
   await Promise.all([loadRecords(),loadTechs(),loadComisionesDB()]);
 
-  buildTabs();
-  if(currentLevel==='operador'){
-    showTab('operador');
-    const nameDisp=document.getElementById('op-name-display');
-    if(nameDisp)nameDisp.textContent=window._operadorName||'';
-    renderOpSvcList();
-    return;
-  }
-  showTab('registro');
+  buildTabs();showTab('registro');
   renderSvcSelector();renderTechSelector();
   ['calidad','proceso'].forEach(renderChk);
   document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
@@ -1360,7 +762,7 @@ function buildTabs(){
 }
 
 function showTab(name){
-  ['registro','historial','estadisticas','graficas','resumen','tecnicos','comisiones','config','operador'].forEach(t=>{
+  ['registro','historial','estadisticas','graficas','resumen','tecnicos','comisiones','config'].forEach(t=>{
     const el=document.getElementById('tab-'+t);if(el)el.style.display=t===name?'block':'none';
     const btn=document.getElementById('tabn-'+t);if(btn)btn.classList.toggle('active',t===name);
   });
@@ -1627,6 +1029,15 @@ function getWeeksOfMonth(month, year){
   return weeks;
 }
 
+async function savePin(role){
+  const val=document.getElementById('pin-'+role+'-new').value.trim();
+  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
+  pins[role]=val;saveLocal('cd_pins',pins);
+  await savePinsDB();
+  document.getElementById('pin-'+role+'-new').value='';
+  alert('PIN actualizado.');
+}
+
 function setStatsMonth(m,y){window._statsMonth=m;window._statsYear=y;renderEstadisticas();}
 
 async function renderTechsManager(){
@@ -1665,6 +1076,224 @@ async function saveComisiones(){
   await saveComisionesDB();saveLocal('cd_comisiones',comisiones);
   alert('Comisiones de '+t+' guardadas.');renderComisiones();
 }
+
+// ── GRÁFICAS ──
+let chartTipos=null, chartColab=null, chartSemanas=null;
+let chartsTech={};
+
+function setGrafPeriod(p){
+  const now=new Date();
+  let desde,hasta=new Date();
+  if(p==='week'){
+    const day=now.getDay();
+    desde=new Date(now);desde.setDate(now.getDate()-(day===0?6:day-1));
+  } else if(p==='month'){
+    desde=new Date(now.getFullYear(),now.getMonth(),1);
+  } else {
+    // all - find min date in records
+    if(!records.length){desde=new Date(now.getFullYear(),now.getMonth(),1);}
+    else{
+      const dates=records.map(r=>r.date).sort();
+      desde=new Date(dates[0]+'T00:00:00');
+    }
+  }
+  document.getElementById('graf-desde').value=desde.toISOString().split('T')[0];
+  document.getElementById('graf-hasta').value=hasta.toISOString().split('T')[0];
+  renderGraficas();
+}
+
+function initGraficas(){
+  if(!document.getElementById('graf-desde').value){
+    setGrafPeriod('month');
+  } else {
+    renderGraficas();
+  }
+}
+
+function destroyChart(c){if(c){try{c.destroy();}catch(e){}}}
+
+function renderGraficas(){
+  const desde=document.getElementById('graf-desde').value;
+  const hasta=document.getElementById('graf-hasta').value;
+  if(!desde||!hasta){alert('Selecciona el período.');return;}
+
+  const desdeD=new Date(desde+'T00:00:00');
+  const hastaD=new Date(hasta+'T23:59:59');
+
+  const filtered=records.filter(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    return d>=desdeD&&d<=hastaD;
+  });
+
+  const fmtDate=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('graf-period-label').textContent=
+    filtered.length+' servicios del '+fmtDate(desdeD)+' al '+fmtDate(hastaD);
+
+  // Count by service type
+  const byTipo={};
+  filtered.forEach(r=>{
+    const svcs=r.svcs||(r.svc?[r.svc]:[]);
+    svcs.forEach(s=>{byTipo[s]=(byTipo[s]||0)+1;});
+  });
+  const tipoLabels=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]);
+  const tipoData=tipoLabels.map(k=>byTipo[k]);
+
+  // Count by collaborator
+  const byColab={};
+  filtered.forEach(r=>{
+    r.techs.forEach(t=>{byColab[t]=(byColab[t]||0)+1;});
+  });
+  const colabLabels=Object.keys(byColab).sort((a,b)=>byColab[b]-byColab[a]);
+  const colabData=colabLabels.map(k=>byColab[k]);
+  const colabColors=colabLabels.map(t=>techColor(t));
+
+  // Count by week
+  const byWeek={};
+  filtered.forEach(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    const day=d.getDay();
+    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+    const key=mon.toISOString().split('T')[0];
+    const lbl=mon.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+    if(!byWeek[key])byWeek[key]={lbl,count:0};
+    byWeek[key].count++;
+  });
+  const weekEntries=Object.entries(byWeek).sort((a,b)=>a[0].localeCompare(b[0]));
+  const weekLabels=weekEntries.map(([,v])=>v.lbl);
+  const weekData=weekEntries.map(([,v])=>v.count);
+
+  const COLORS=['#F15A22','#185FA5','#3B6D11','#8B2BAB','#BA7517','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45','#E67E22','#2980B9','#27AE60'];
+
+  // Chart 1: Tipos (horizontal bar)
+  destroyChart(chartTipos);
+  const ctx1=document.getElementById('chart-tipos').getContext('2d');
+  chartTipos=new Chart(ctx1,{
+    type:'line',
+    data:{
+      labels:tipoLabels,
+      datasets:[{
+        label:'Servicios',
+        data:tipoData,
+        backgroundColor:tipoLabels.map((_,i)=>COLORS[i%COLORS.length]),
+        borderRadius:6,
+        borderSkipped:false,
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Chart 2: Colaboradores (doughnut)
+  destroyChart(chartColab);
+  const ctx2=document.getElementById('chart-colab').getContext('2d');
+  chartColab=new Chart(ctx2,{
+    type:'line',
+    data:{
+      labels:colabLabels,
+      datasets:[{
+        label:'Servicios',
+        data:colabData,
+        borderColor:'#185FA5',
+        backgroundColor:'rgba(24,95,165,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:colabColors,
+        pointRadius:6,
+        fill:true,
+        tension:0.3
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Chart 3: Por semana (line)
+  destroyChart(chartSemanas);
+  const ctx3=document.getElementById('chart-semanas').getContext('2d');
+  chartSemanas=new Chart(ctx3,{
+    type:'line',
+    data:{
+      labels:weekLabels,
+      datasets:[{
+        label:'Servicios por semana',
+        data:weekData,
+        borderColor:'#F15A22',
+        backgroundColor:'rgba(241,90,34,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:'#F15A22',
+        pointRadius:5,
+        fill:true,
+        tension:0.3
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicios`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Charts per tech: what services each person did
+  const techContainer=document.getElementById('graf-by-tech');
+  // Destroy old charts
+  Object.values(chartsTech).forEach(c=>destroyChart(c));
+  chartsTech={};
+
+  if(!colabLabels.length){techContainer.innerHTML='';return;}
+
+  techContainer.innerHTML=`<div style="font-size:13px;font-weight:700;color:#333;margin-bottom:12px">Servicios por colaborador — detalle</div>`+
+    colabLabels.map(t=>`
+      <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:50%;background:${techColor(t)};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${initials(t)}</div>
+          <span style="font-size:14px;font-weight:700;color:#111">${t}</span>
+          <span style="font-size:12px;color:#888">${byColab[t]} servicio${byColab[t]!==1?'s':''}</span>
+        </div>
+        <canvas id="chart-tech-${t.replace(/\s/g,'_')}" height="120"></canvas>
+      </div>
+    `).join('');
+
+  colabLabels.forEach(t=>{
+    const techRecs=filtered.filter(r=>r.techs.includes(t));
+    const ts={};
+    techRecs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);svcs.forEach(s=>{ts[s]=(ts[s]||0)+1;});});
+    const tLabels=Object.keys(ts).sort((a,b)=>ts[b]-ts[a]);
+    const tData=tLabels.map(k=>ts[k]);
+    const canvasId='chart-tech-'+t.replace(/\s/g,'_');
+    const ctx=document.getElementById(canvasId)?.getContext('2d');
+    if(!ctx)return;
+    chartsTech[t]=new Chart(ctx,{
+      type:'line',
+      data:{
+        labels:tLabels,
+        datasets:[{
+          label:'Servicios',
+          data:tData,
+          borderColor:techColor(t),
+          backgroundColor:techColor(t)+'22',
+          borderWidth:2.5,
+          pointBackgroundColor:techColor(t),
+          pointRadius:5,
+          fill:true,
+          tension:0.3
+        }]
+      },
+      options:{
+        responsive:true,
+        plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+      }
+    });
+  });
+}
+
+
+
 
 // ── GRÁFICAS ──
 let chartTipos=null, chartColab=null, chartSemanas=null;
@@ -2011,6 +1640,6 @@ async function saveOperadorRecord(){
 }
 
 
+
+
 </script>
-</body>
-</html>
