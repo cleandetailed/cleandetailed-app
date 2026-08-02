@@ -5,227 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Clean Detailed — Sistema de Evaluación</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
-// ── GRÁFICAS ──
-let chartTipos=null, chartColab=null, chartSemanas=null;
-let chartsTech={};
-
-function setGrafPeriod(p){
-  const now=new Date();
-  let desde,hasta=new Date();
-  if(p==='week'){
-    const day=now.getDay();
-    desde=new Date(now);desde.setDate(now.getDate()-(day===0?6:day-1));
-  } else if(p==='month'){
-    desde=new Date(now.getFullYear(),now.getMonth(),1);
-  } else {
-    // all - find min date in records
-    if(!records.length){desde=new Date(now.getFullYear(),now.getMonth(),1);}
-    else{
-      const dates=records.map(r=>r.date).sort();
-      desde=new Date(dates[0]+'T00:00:00');
-    }
-  }
-  document.getElementById('graf-desde').value=desde.toISOString().split('T')[0];
-  document.getElementById('graf-hasta').value=hasta.toISOString().split('T')[0];
-  renderGraficas();
-}
-
-function initGraficas(){
-  if(!document.getElementById('graf-desde').value){
-    setGrafPeriod('month');
-  } else {
-    renderGraficas();
-  }
-}
-
-function destroyChart(c){if(c){try{c.destroy();}catch(e){}}}
-
-function renderGraficas(){
-  const desde=document.getElementById('graf-desde').value;
-  const hasta=document.getElementById('graf-hasta').value;
-  if(!desde||!hasta){alert('Selecciona el período.');return;}
-
-  const desdeD=new Date(desde+'T00:00:00');
-  const hastaD=new Date(hasta+'T23:59:59');
-
-  const filtered=records.filter(r=>{
-    const d=new Date(r.date+'T00:00:00');
-    return d>=desdeD&&d<=hastaD;
-  });
-
-  const fmtDate=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
-  document.getElementById('graf-period-label').textContent=
-    filtered.length+' servicios del '+fmtDate(desdeD)+' al '+fmtDate(hastaD);
-
-  // Count by service type
-  const byTipo={};
-  filtered.forEach(r=>{
-    const svcs=r.svcs||(r.svc?[r.svc]:[]);
-    svcs.forEach(s=>{byTipo[s]=(byTipo[s]||0)+1;});
-  });
-  const tipoLabels=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]);
-  const tipoData=tipoLabels.map(k=>byTipo[k]);
-
-  // Count by collaborator
-  const byColab={};
-  filtered.forEach(r=>{
-    r.techs.forEach(t=>{byColab[t]=(byColab[t]||0)+1;});
-  });
-  const colabLabels=Object.keys(byColab).sort((a,b)=>byColab[b]-byColab[a]);
-  const colabData=colabLabels.map(k=>byColab[k]);
-  const colabColors=colabLabels.map(t=>techColor(t));
-
-  // Count by week
-  const byWeek={};
-  filtered.forEach(r=>{
-    const d=new Date(r.date+'T00:00:00');
-    const day=d.getDay();
-    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
-    const key=mon.toISOString().split('T')[0];
-    const lbl=mon.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
-    if(!byWeek[key])byWeek[key]={lbl,count:0};
-    byWeek[key].count++;
-  });
-  const weekEntries=Object.entries(byWeek).sort((a,b)=>a[0].localeCompare(b[0]));
-  const weekLabels=weekEntries.map(([,v])=>v.lbl);
-  const weekData=weekEntries.map(([,v])=>v.count);
-
-  const COLORS=['#F15A22','#185FA5','#3B6D11','#8B2BAB','#BA7517','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45','#E67E22','#2980B9','#27AE60'];
-
-  // Chart 1: Tipos (horizontal bar)
-  destroyChart(chartTipos);
-  const ctx1=document.getElementById('chart-tipos').getContext('2d');
-  chartTipos=new Chart(ctx1,{
-    type:'line',
-    data:{
-      labels:tipoLabels,
-      datasets:[{
-        label:'Servicios',
-        data:tipoData,
-        backgroundColor:tipoLabels.map((_,i)=>COLORS[i%COLORS.length]),
-        borderRadius:6,
-        borderSkipped:false,
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
-      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-    }
-  });
-
-  // Chart 2: Colaboradores (doughnut)
-  destroyChart(chartColab);
-  const ctx2=document.getElementById('chart-colab').getContext('2d');
-  chartColab=new Chart(ctx2,{
-    type:'line',
-    data:{
-      labels:colabLabels,
-      datasets:[{
-        label:'Servicios',
-        data:colabData,
-        borderColor:'#185FA5',
-        backgroundColor:'rgba(24,95,165,0.1)',
-        borderWidth:2.5,
-        pointBackgroundColor:colabColors,
-        pointRadius:6,
-        fill:true,
-        tension:0.3
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}},
-      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-    }
-  });
-
-  // Chart 3: Por semana (line)
-  destroyChart(chartSemanas);
-  const ctx3=document.getElementById('chart-semanas').getContext('2d');
-  chartSemanas=new Chart(ctx3,{
-    type:'line',
-    data:{
-      labels:weekLabels,
-      datasets:[{
-        label:'Servicios por semana',
-        data:weekData,
-        borderColor:'#F15A22',
-        backgroundColor:'rgba(241,90,34,0.1)',
-        borderWidth:2.5,
-        pointBackgroundColor:'#F15A22',
-        pointRadius:5,
-        fill:true,
-        tension:0.3
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicios`}}},
-      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-    }
-  });
-
-  // Charts per tech: what services each person did
-  const techContainer=document.getElementById('graf-by-tech');
-  // Destroy old charts
-  Object.values(chartsTech).forEach(c=>destroyChart(c));
-  chartsTech={};
-
-  if(!colabLabels.length){techContainer.innerHTML='';return;}
-
-  techContainer.innerHTML=`<div style="font-size:13px;font-weight:700;color:#333;margin-bottom:12px">Servicios por colaborador — detalle</div>`+
-    colabLabels.map(t=>`
-      <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-          <div style="width:32px;height:32px;border-radius:50%;background:${techColor(t)};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${initials(t)}</div>
-          <span style="font-size:14px;font-weight:700;color:#111">${t}</span>
-          <span style="font-size:12px;color:#888">${byColab[t]} servicio${byColab[t]!==1?'s':''}</span>
-        </div>
-        <canvas id="chart-tech-${t.replace(/\s/g,'_')}" height="120"></canvas>
-      </div>
-    `).join('');
-
-  colabLabels.forEach(t=>{
-    const techRecs=filtered.filter(r=>r.techs.includes(t));
-    const ts={};
-    techRecs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);svcs.forEach(s=>{ts[s]=(ts[s]||0)+1;});});
-    const tLabels=Object.keys(ts).sort((a,b)=>ts[b]-ts[a]);
-    const tData=tLabels.map(k=>ts[k]);
-    const canvasId='chart-tech-'+t.replace(/\s/g,'_');
-    const ctx=document.getElementById(canvasId)?.getContext('2d');
-    if(!ctx)return;
-    chartsTech[t]=new Chart(ctx,{
-      type:'line',
-      data:{
-        labels:tLabels,
-        datasets:[{
-          label:'Servicios',
-          data:tData,
-          borderColor:techColor(t),
-          backgroundColor:techColor(t)+'22',
-          borderWidth:2.5,
-          pointBackgroundColor:techColor(t),
-          pointRadius:5,
-          fill:true,
-          tension:0.3
-        }]
-      },
-      options:{
-        responsive:true,
-        plugins:{legend:{display:false}},
-        scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-      }
-    });
-  });
-}
-
-
-
-
-
-</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:14px;background:#f0f0f0;color:#111;min-height:100vh}
@@ -1638,6 +1418,226 @@ async function saveOperadorRecord(){
     alert('Error al guardar: '+e.message);
   }
 }
+
+
+
+
+
+// ── GRÁFICAS ──
+let chartTipos=null, chartColab=null, chartSemanas=null;
+let chartsTech={};
+
+function setGrafPeriod(p){
+  const now=new Date();
+  let desde,hasta=new Date();
+  if(p==='week'){
+    const day=now.getDay();
+    desde=new Date(now);desde.setDate(now.getDate()-(day===0?6:day-1));
+  } else if(p==='month'){
+    desde=new Date(now.getFullYear(),now.getMonth(),1);
+  } else {
+    // all - find min date in records
+    if(!records.length){desde=new Date(now.getFullYear(),now.getMonth(),1);}
+    else{
+      const dates=records.map(r=>r.date).sort();
+      desde=new Date(dates[0]+'T00:00:00');
+    }
+  }
+  document.getElementById('graf-desde').value=desde.toISOString().split('T')[0];
+  document.getElementById('graf-hasta').value=hasta.toISOString().split('T')[0];
+  renderGraficas();
+}
+
+function initGraficas(){
+  if(!document.getElementById('graf-desde').value){
+    setGrafPeriod('month');
+  } else {
+    renderGraficas();
+  }
+}
+
+function destroyChart(c){if(c){try{c.destroy();}catch(e){}}}
+
+function renderGraficas(){
+  const desde=document.getElementById('graf-desde').value;
+  const hasta=document.getElementById('graf-hasta').value;
+  if(!desde||!hasta){alert('Selecciona el período.');return;}
+
+  const desdeD=new Date(desde+'T00:00:00');
+  const hastaD=new Date(hasta+'T23:59:59');
+
+  const filtered=records.filter(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    return d>=desdeD&&d<=hastaD;
+  });
+
+  const fmtDate=x=>x.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('graf-period-label').textContent=
+    filtered.length+' servicios del '+fmtDate(desdeD)+' al '+fmtDate(hastaD);
+
+  // Count by service type
+  const byTipo={};
+  filtered.forEach(r=>{
+    const svcs=r.svcs||(r.svc?[r.svc]:[]);
+    svcs.forEach(s=>{byTipo[s]=(byTipo[s]||0)+1;});
+  });
+  const tipoLabels=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]);
+  const tipoData=tipoLabels.map(k=>byTipo[k]);
+
+  // Count by collaborator
+  const byColab={};
+  filtered.forEach(r=>{
+    r.techs.forEach(t=>{byColab[t]=(byColab[t]||0)+1;});
+  });
+  const colabLabels=Object.keys(byColab).sort((a,b)=>byColab[b]-byColab[a]);
+  const colabData=colabLabels.map(k=>byColab[k]);
+  const colabColors=colabLabels.map(t=>techColor(t));
+
+  // Count by week
+  const byWeek={};
+  filtered.forEach(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    const day=d.getDay();
+    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+    const key=mon.toISOString().split('T')[0];
+    const lbl=mon.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+    if(!byWeek[key])byWeek[key]={lbl,count:0};
+    byWeek[key].count++;
+  });
+  const weekEntries=Object.entries(byWeek).sort((a,b)=>a[0].localeCompare(b[0]));
+  const weekLabels=weekEntries.map(([,v])=>v.lbl);
+  const weekData=weekEntries.map(([,v])=>v.count);
+
+  const COLORS=['#F15A22','#185FA5','#3B6D11','#8B2BAB','#BA7517','#0E7C7B','#C0392B','#2C3E7F','#6D4C1F','#1A6B45','#E67E22','#2980B9','#27AE60'];
+
+  // Chart 1: Tipos (horizontal bar)
+  destroyChart(chartTipos);
+  const ctx1=document.getElementById('chart-tipos').getContext('2d');
+  chartTipos=new Chart(ctx1,{
+    type:'line',
+    data:{
+      labels:tipoLabels,
+      datasets:[{
+        label:'Servicios',
+        data:tipoData,
+        backgroundColor:tipoLabels.map((_,i)=>COLORS[i%COLORS.length]),
+        borderRadius:6,
+        borderSkipped:false,
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Chart 2: Colaboradores (doughnut)
+  destroyChart(chartColab);
+  const ctx2=document.getElementById('chart-colab').getContext('2d');
+  chartColab=new Chart(ctx2,{
+    type:'line',
+    data:{
+      labels:colabLabels,
+      datasets:[{
+        label:'Servicios',
+        data:colabData,
+        borderColor:'#185FA5',
+        backgroundColor:'rgba(24,95,165,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:colabColors,
+        pointRadius:6,
+        fill:true,
+        tension:0.3
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} servicio${c.raw!==1?'s':''}`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Chart 3: Por semana (line)
+  destroyChart(chartSemanas);
+  const ctx3=document.getElementById('chart-semanas').getContext('2d');
+  chartSemanas=new Chart(ctx3,{
+    type:'line',
+    data:{
+      labels:weekLabels,
+      datasets:[{
+        label:'Servicios por semana',
+        data:weekData,
+        borderColor:'#F15A22',
+        backgroundColor:'rgba(241,90,34,0.1)',
+        borderWidth:2.5,
+        pointBackgroundColor:'#F15A22',
+        pointRadius:5,
+        fill:true,
+        tension:0.3
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} servicios`}}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // Charts per tech: what services each person did
+  const techContainer=document.getElementById('graf-by-tech');
+  // Destroy old charts
+  Object.values(chartsTech).forEach(c=>destroyChart(c));
+  chartsTech={};
+
+  if(!colabLabels.length){techContainer.innerHTML='';return;}
+
+  techContainer.innerHTML=`<div style="font-size:13px;font-weight:700;color:#333;margin-bottom:12px">Servicios por colaborador — detalle</div>`+
+    colabLabels.map(t=>`
+      <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:50%;background:${techColor(t)};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${initials(t)}</div>
+          <span style="font-size:14px;font-weight:700;color:#111">${t}</span>
+          <span style="font-size:12px;color:#888">${byColab[t]} servicio${byColab[t]!==1?'s':''}</span>
+        </div>
+        <canvas id="chart-tech-${t.replace(/\s/g,'_')}" height="120"></canvas>
+      </div>
+    `).join('');
+
+  colabLabels.forEach(t=>{
+    const techRecs=filtered.filter(r=>r.techs.includes(t));
+    const ts={};
+    techRecs.forEach(r=>{const svcs=r.svcs||(r.svc?[r.svc]:[]);svcs.forEach(s=>{ts[s]=(ts[s]||0)+1;});});
+    const tLabels=Object.keys(ts).sort((a,b)=>ts[b]-ts[a]);
+    const tData=tLabels.map(k=>ts[k]);
+    const canvasId='chart-tech-'+t.replace(/\s/g,'_');
+    const ctx=document.getElementById(canvasId)?.getContext('2d');
+    if(!ctx)return;
+    chartsTech[t]=new Chart(ctx,{
+      type:'line',
+      data:{
+        labels:tLabels,
+        datasets:[{
+          label:'Servicios',
+          data:tData,
+          borderColor:techColor(t),
+          backgroundColor:techColor(t)+'22',
+          borderWidth:2.5,
+          pointBackgroundColor:techColor(t),
+          pointRadius:5,
+          fill:true,
+          tension:0.3
+        }]
+      },
+      options:{
+        responsive:true,
+        plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+      }
+    });
+  });
+}
+
 
 
 
