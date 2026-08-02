@@ -1246,7 +1246,11 @@ async function saveTechsDB(){
 async function loadPins(){
   try{
     const {data,error}=await sb.from('config').select('*').eq('key','pins').single();
-    if(!error&&data)pins=JSON.parse(data.value);
+    if(!error&&data){
+      const loaded=JSON.parse(data.value);
+      // Merge with defaults so operador key is always available
+      pins={coord:'1234',admin:'9999',operador:'0000',...loaded};
+    }
   }catch(e){}
 }
 async function savePinsDB(){
@@ -1279,9 +1283,14 @@ async function doLogin(){
   if(pin===pins.admin){currentLevel='admin';startApp();}
   else if(pin===pins.coord){currentLevel='coord';startApp();}
   else if(pin===(pins.operador||'0000')){
-    // Ask operator to select name
-    const name=document.getElementById('op-name-select')?.value;
-    if(!name||name===''){err.textContent='Selecciona tu nombre primero.';err.style.display='block';setTimeout(()=>{err.style.display='none';err.textContent='PIN incorrecto. Intenta de nuevo.';},2000);return;}
+    const sel=document.getElementById('op-name-select');
+    const name=sel?sel.value:'';
+    if(!name){
+      err.textContent='Selecciona tu nombre primero.';
+      err.style.display='block';
+      setTimeout(()=>{err.style.display='none';err.textContent='PIN incorrecto. Intenta de nuevo.';},2000);
+      return;
+    }
     currentLevel='operador';
     window._operadorName=name;
     startApp();
