@@ -220,6 +220,143 @@ function renderGraficas(){
   });
 }
 
+
+// ── OPERADOR ──
+let opSelectedSvc = '';
+let opFotosEntrada = [];
+let opFotosSalida = [];
+
+function checkOperadorPin(val){
+  const wrap = document.getElementById('op-name-wrap');
+  if(!wrap)return;
+  if(val.length>=4){
+    // populate name list from techs
+    const sel=document.getElementById('op-name-select');
+    if(sel&&sel.options.length<=1){
+      techs.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
+    }
+    wrap.style.display='flex';
+  } else {
+    wrap.style.display='none';
+  }
+}
+
+function renderOpSvcList(){
+  const el=document.getElementById('op-svc-list');
+  if(!el)return;
+  el.innerHTML=SERVICES_LIST.map(s=>`
+    <div onclick="selectOpSvc('${s}')" style="padding:10px 14px;cursor:pointer;font-size:13px;color:#222;border-bottom:1px solid #f0f0f0;background:${opSelectedSvc===s?'#FFF0EB':'#fff'}">${s}</div>
+  `).join('');
+}
+function selectOpSvc(s){
+  opSelectedSvc=s;
+  const lbl=document.getElementById('op-svc-label');
+  if(lbl){lbl.textContent=s;lbl.style.color='#111';}
+  toggleOpSvcDropdown();
+}
+function toggleOpSvcDropdown(){
+  const dd=document.getElementById('op-svc-dropdown');
+  if(!dd)return;
+  dd.style.display=dd.style.display==='block'?'none':'block';
+  renderOpSvcList();
+}
+
+function addPhotoPreview(file, gridId, type){
+  const grid=document.getElementById(gridId);
+  if(!grid)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const div=document.createElement('div');
+    div.style.cssText='aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative';
+    div.innerHTML=`<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
+    const addBtn=grid.querySelector('label');
+    grid.insertBefore(div,addBtn);
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleFotos(input, type){
+  const files=Array.from(input.files);
+  const gridId=type==='entrada'?'op-fotos-entrada-grid':'op-fotos-salida-grid';
+  files.forEach(f=>{
+    if(type==='entrada') opFotosEntrada.push(f);
+    else opFotosSalida.push(f);
+    addPhotoPreview(f,gridId,type);
+  });
+  input.value='';
+}
+
+async function uploadFotos(files, prefix){
+  const urls=[];
+  for(const file of files){
+    const ext=file.name.split('.').pop();
+    const path=`${prefix}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const {data,error}=await sb.storage.from('fotos-servicios').upload(path,file,{contentType:file.type});
+    if(!error){
+      const {data:urlData}=sb.storage.from('fotos-servicios').getPublicUrl(path);
+      urls.push(urlData.publicUrl);
+    }
+  }
+  return urls;
+}
+
+async function saveOperadorRecord(){
+  const vehicle=document.getElementById('op-vehicle')?.value.trim();
+  const nota=document.getElementById('op-nota')?.value.trim();
+  if(!opSelectedSvc){alert('Selecciona un servicio.');return;}
+  if(!vehicle){alert('Escribe el vehículo.');return;}
+
+  const statusEl=document.getElementById('op-upload-status');
+  if(statusEl)statusEl.style.display='block';
+
+  try{
+    // Upload photos
+    const urlsEntrada=await uploadFotos(opFotosEntrada,'entrada');
+    const urlsSalida=await uploadFotos(opFotosSalida,'salida');
+
+    const today=new Date().toISOString().split('T')[0];
+    const {error}=await sb.from('records').insert([{
+      svcs:JSON.stringify([opSelectedSvc]),
+      vehicle,
+      date:today,
+      notes:nota||'',
+      techs:JSON.stringify([window._operadorName||'Operador']),
+      tiempo:null,
+      chk:JSON.stringify({calidad:[false,false,false],proceso:[false,false,false]}),
+      fotos_entrada:JSON.stringify(urlsEntrada),
+      fotos_salida:JSON.stringify(urlsSalida),
+      nota_recepcion:nota||''
+    }]);
+
+    if(error)throw error;
+
+    // Reset
+    opSelectedSvc='';opFotosEntrada=[];opFotosSalida=[];
+    if(document.getElementById('op-vehicle'))document.getElementById('op-vehicle').value='';
+    if(document.getElementById('op-nota'))document.getElementById('op-nota').value='';
+    if(document.getElementById('op-svc-label')){document.getElementById('op-svc-label').textContent='Selecciona...';document.getElementById('op-svc-label').style.color='#888';}
+    document.getElementById('op-fotos-entrada-grid').innerHTML=`<label style="aspect-ratio:1;background:#E6F1FB;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #185FA5"><span style="color:#185FA5;font-size:22px">+</span><span style="font-size:10px;color:#185FA5">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'entrada')"></label>`;
+    document.getElementById('op-fotos-salida-grid').innerHTML=`<label style="aspect-ratio:1;background:#EAF3DE;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #3B6D11"><span style="color:#3B6D11;font-size:22px">+</span><span style="font-size:10px;color:#3B6D11">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'salida')"></label>`;
+
+    if(statusEl)statusEl.style.display='none';
+    alert('✓ Servicio registrado correctamente.');
+    await loadRecords();
+  }catch(e){
+    if(statusEl)statusEl.style.display='none';
+    alert('Error al guardar: '+e.message);
+  }
+}
+
+// Update PIN config to include operador
+async function savePin(role){
+  const val=document.getElementById('pin-'+role+'-new').value.trim();
+  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
+  pins[role]=val;saveLocal('cd_pins',pins);
+  await savePinsDB();
+  document.getElementById('pin-'+role+'-new').value='';
+  alert('PIN actualizado.');
+}
+
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
 // ── GRÁFICAS ──
@@ -437,6 +574,143 @@ function renderGraficas(){
   });
 }
 
+
+// ── OPERADOR ──
+let opSelectedSvc = '';
+let opFotosEntrada = [];
+let opFotosSalida = [];
+
+function checkOperadorPin(val){
+  const wrap = document.getElementById('op-name-wrap');
+  if(!wrap)return;
+  if(val.length>=4){
+    // populate name list from techs
+    const sel=document.getElementById('op-name-select');
+    if(sel&&sel.options.length<=1){
+      techs.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
+    }
+    wrap.style.display='flex';
+  } else {
+    wrap.style.display='none';
+  }
+}
+
+function renderOpSvcList(){
+  const el=document.getElementById('op-svc-list');
+  if(!el)return;
+  el.innerHTML=SERVICES_LIST.map(s=>`
+    <div onclick="selectOpSvc('${s}')" style="padding:10px 14px;cursor:pointer;font-size:13px;color:#222;border-bottom:1px solid #f0f0f0;background:${opSelectedSvc===s?'#FFF0EB':'#fff'}">${s}</div>
+  `).join('');
+}
+function selectOpSvc(s){
+  opSelectedSvc=s;
+  const lbl=document.getElementById('op-svc-label');
+  if(lbl){lbl.textContent=s;lbl.style.color='#111';}
+  toggleOpSvcDropdown();
+}
+function toggleOpSvcDropdown(){
+  const dd=document.getElementById('op-svc-dropdown');
+  if(!dd)return;
+  dd.style.display=dd.style.display==='block'?'none':'block';
+  renderOpSvcList();
+}
+
+function addPhotoPreview(file, gridId, type){
+  const grid=document.getElementById(gridId);
+  if(!grid)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const div=document.createElement('div');
+    div.style.cssText='aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative';
+    div.innerHTML=`<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
+    const addBtn=grid.querySelector('label');
+    grid.insertBefore(div,addBtn);
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleFotos(input, type){
+  const files=Array.from(input.files);
+  const gridId=type==='entrada'?'op-fotos-entrada-grid':'op-fotos-salida-grid';
+  files.forEach(f=>{
+    if(type==='entrada') opFotosEntrada.push(f);
+    else opFotosSalida.push(f);
+    addPhotoPreview(f,gridId,type);
+  });
+  input.value='';
+}
+
+async function uploadFotos(files, prefix){
+  const urls=[];
+  for(const file of files){
+    const ext=file.name.split('.').pop();
+    const path=`${prefix}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const {data,error}=await sb.storage.from('fotos-servicios').upload(path,file,{contentType:file.type});
+    if(!error){
+      const {data:urlData}=sb.storage.from('fotos-servicios').getPublicUrl(path);
+      urls.push(urlData.publicUrl);
+    }
+  }
+  return urls;
+}
+
+async function saveOperadorRecord(){
+  const vehicle=document.getElementById('op-vehicle')?.value.trim();
+  const nota=document.getElementById('op-nota')?.value.trim();
+  if(!opSelectedSvc){alert('Selecciona un servicio.');return;}
+  if(!vehicle){alert('Escribe el vehículo.');return;}
+
+  const statusEl=document.getElementById('op-upload-status');
+  if(statusEl)statusEl.style.display='block';
+
+  try{
+    // Upload photos
+    const urlsEntrada=await uploadFotos(opFotosEntrada,'entrada');
+    const urlsSalida=await uploadFotos(opFotosSalida,'salida');
+
+    const today=new Date().toISOString().split('T')[0];
+    const {error}=await sb.from('records').insert([{
+      svcs:JSON.stringify([opSelectedSvc]),
+      vehicle,
+      date:today,
+      notes:nota||'',
+      techs:JSON.stringify([window._operadorName||'Operador']),
+      tiempo:null,
+      chk:JSON.stringify({calidad:[false,false,false],proceso:[false,false,false]}),
+      fotos_entrada:JSON.stringify(urlsEntrada),
+      fotos_salida:JSON.stringify(urlsSalida),
+      nota_recepcion:nota||''
+    }]);
+
+    if(error)throw error;
+
+    // Reset
+    opSelectedSvc='';opFotosEntrada=[];opFotosSalida=[];
+    if(document.getElementById('op-vehicle'))document.getElementById('op-vehicle').value='';
+    if(document.getElementById('op-nota'))document.getElementById('op-nota').value='';
+    if(document.getElementById('op-svc-label')){document.getElementById('op-svc-label').textContent='Selecciona...';document.getElementById('op-svc-label').style.color='#888';}
+    document.getElementById('op-fotos-entrada-grid').innerHTML=`<label style="aspect-ratio:1;background:#E6F1FB;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #185FA5"><span style="color:#185FA5;font-size:22px">+</span><span style="font-size:10px;color:#185FA5">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'entrada')"></label>`;
+    document.getElementById('op-fotos-salida-grid').innerHTML=`<label style="aspect-ratio:1;background:#EAF3DE;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #3B6D11"><span style="color:#3B6D11;font-size:22px">+</span><span style="font-size:10px;color:#3B6D11">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'salida')"></label>`;
+
+    if(statusEl)statusEl.style.display='none';
+    alert('✓ Servicio registrado correctamente.');
+    await loadRecords();
+  }catch(e){
+    if(statusEl)statusEl.style.display='none';
+    alert('Error al guardar: '+e.message);
+  }
+}
+
+// Update PIN config to include operador
+async function savePin(role){
+  const val=document.getElementById('pin-'+role+'-new').value.trim();
+  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
+  pins[role]=val;saveLocal('cd_pins',pins);
+  await savePinsDB();
+  document.getElementById('pin-'+role+'-new').value='';
+  alert('PIN actualizado.');
+}
+
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -596,7 +870,13 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:var(--orange)}
     <div style="text-align:center;margin-top:4px">
       <div style="font-size:11px;font-weight:700;color:#888;letter-spacing:.1em;text-transform:uppercase;">Sistema de Evaluación de Servicios</div>
     </div>
-    <input class="pin-input" type="password" id="pin-input" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
+    <div id="op-name-wrap" style="width:100%;display:none;flex-direction:column;gap:6px">
+      <label style="font-size:12px;color:#888;font-weight:600">¿Quién eres?</label>
+      <select id="op-name-select" style="width:100%;background:#f5f5f5;color:#111;border:1px solid #ddd;border-radius:8px;padding:10px;font-size:13px;font-family:Arial,sans-serif">
+        <option value="">Selecciona tu nombre...</option>
+      </select>
+    </div>
+    <input class="pin-input" type="password" id="pin-input" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()" oninput="checkOperadorPin(this.value)">
     <button class="login-btn" onclick="doLogin()">Entrar</button>
     <div class="login-error" id="login-error">PIN incorrecto. Intenta de nuevo.</div>
   </div>
@@ -749,12 +1029,92 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:var(--orange)}
       <div id="graf-by-tech" style="margin-top:16px"></div>
     </div>
 
+    <div id="tab-operador" style="display:none">
+      <div id="readonly-notice" style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:8px 14px;font-size:12px;color:#795548;margin-bottom:12px">
+        👋 Hola <strong id="op-name-display"></strong> — registra el servicio que estás realizando
+      </div>
+      <div class="form-card">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Vehículo</label>
+            <input type="text" id="op-vehicle" placeholder="Ej. Honda Civic gris">
+          </div>
+          <div class="form-group">
+            <label>Servicio realizado</label>
+            <div id="op-svc-dropdown-wrap" style="position:relative">
+              <div onclick="toggleOpSvcDropdown()" style="padding:8px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:space-between;min-height:38px">
+                <div id="op-svc-label" style="font-size:13px;color:#888">Selecciona...</div>
+                <span style="color:#888;font-size:12px">▼</span>
+              </div>
+              <div id="op-svc-dropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:200;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:200px;overflow-y:auto;margin-top:2px">
+                <div id="op-svc-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fotos entrada -->
+        <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
+          <div style="background:#185FA5;padding:10px 14px;display:flex;align-items:center;gap:8px">
+            <span style="color:#fff;font-size:14px">📷</span>
+            <span style="color:#fff;font-size:13px;font-weight:500">Fotos de entrada</span>
+            <span style="color:#B5D4F4;font-size:11px">Estado del vehículo al recibirlo</span>
+          </div>
+          <div style="padding:12px;background:#f9f9f9">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px" id="op-fotos-entrada-grid">
+              <label style="aspect-ratio:1;background:#E6F1FB;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #185FA5">
+                <span style="color:#185FA5;font-size:22px">+</span>
+                <span style="font-size:10px;color:#185FA5">Foto</span>
+                <input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'entrada')">
+              </label>
+            </div>
+            <div style="font-size:11px;color:#888">Documenta rayones, golpes o daños antes de empezar</div>
+          </div>
+        </div>
+
+        <!-- Nota recepcion -->
+        <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
+          <div style="background:#BA7517;padding:10px 14px;display:flex;align-items:center;gap:8px">
+            <span style="color:#fff;font-size:14px">⚠️</span>
+            <span style="color:#fff;font-size:13px;font-weight:500">Nota de recepción</span>
+            <span style="color:#FAC775;font-size:11px">Daños, faltantes o detalles importantes</span>
+          </div>
+          <div style="padding:12px;background:#f9f9f9">
+            <textarea id="op-nota" rows="3" placeholder="Ej: Rin trasero izquierdo con raspón. Tapete del conductor roto. Cliente lo sabe..." style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;font-family:Arial,sans-serif;resize:none"></textarea>
+          </div>
+        </div>
+
+        <!-- Fotos salida -->
+        <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
+          <div style="background:#3B6D11;padding:10px 14px;display:flex;align-items:center;gap:8px">
+            <span style="color:#fff;font-size:14px">✅</span>
+            <span style="color:#fff;font-size:13px;font-weight:500">Fotos de salida</span>
+            <span style="color:#C0DD97;font-size:11px">Resultado del servicio terminado</span>
+          </div>
+          <div style="padding:12px;background:#f9f9f9">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px" id="op-fotos-salida-grid">
+              <label style="aspect-ratio:1;background:#EAF3DE;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #3B6D11">
+                <span style="color:#3B6D11;font-size:22px">+</span>
+                <span style="font-size:10px;color:#3B6D11">Foto</span>
+                <input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'salida')">
+              </label>
+            </div>
+            <div style="font-size:11px;color:#888">Sube fotos del resultado antes de entregar el vehículo</div>
+          </div>
+        </div>
+
+        <div id="op-upload-status" style="display:none;text-align:center;font-size:13px;color:#888;padding:8px">Subiendo fotos...</div>
+        <button class="save-btn" onclick="saveOperadorRecord()" style="width:100%">💾 Registrar servicio</button>
+      </div>
+    </div>
+
     <div id="tab-config" style="display:none">
       <div class="section-label">Cambiar PINs</div>
       <div class="pin-settings">
         <div class="pin-row"><label>🔵 PIN Coordinador</label><input type="password" id="pin-coord-new" placeholder="Nuevo PIN" maxlength="6"><button class="secondary-btn" onclick="savePin('coord')">Guardar</button></div>
         <div class="pin-row"><label>🟢 PIN Admin / CEO</label><input type="password" id="pin-admin-new" placeholder="Nuevo PIN" maxlength="6"><button class="secondary-btn" onclick="savePin('admin')">Guardar</button></div>
-        <p style="font-size:12px;color:#aaa;margin-top:8px">El PIN actual no se muestra por seguridad.</p>
+        <div class="pin-row"><label>🟠 PIN Operadores</label><input type="password" id="pin-operador-new" placeholder="Nuevo PIN" maxlength="6"><button class="secondary-btn" onclick="savePin('operador')">Guardar</button></div>
+        <p style="font-size:12px;color:#aaa;margin-top:8px">El PIN actual no se muestra por seguridad. PIN operadores por defecto: 0000</p>
       </div>
     </div>
   </div>
@@ -777,7 +1137,7 @@ function saveLocal(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){
 
 let techs=load('cd_techs',['Jose Daniel','Técnico 1','Saul']);
 let records=[];
-let pins=load('cd_pins',{coord:'1234',admin:'9999'});
+let pins=load('cd_pins',{coord:'1234',admin:'9999',operador:'0000'});
 let comisiones=load('cd_comisiones',{});
 let currentLevel=null;
 let selectedSvcs=[],selectedTechs=[],tiempoState=null;
@@ -931,6 +1291,14 @@ async function doLogin(){
   const err=document.getElementById('login-error');
   if(pin===pins.admin){currentLevel='admin';startApp();}
   else if(pin===pins.coord){currentLevel='coord';startApp();}
+  else if(pin===(pins.operador||'0000')){
+    // Ask operator to select name
+    const name=document.getElementById('op-name-select')?.value;
+    if(!name||name===''){err.textContent='Selecciona tu nombre primero.';err.style.display='block';setTimeout(()=>{err.style.display='none';err.textContent='PIN incorrecto. Intenta de nuevo.';},2000);return;}
+    currentLevel='operador';
+    window._operadorName=name;
+    startApp();
+  }
   else{err.style.display='block';setTimeout(()=>err.style.display='none',2000);}
 }
 function logout(){
@@ -960,7 +1328,15 @@ async function startApp(){
   // Load all data from Supabase
   await Promise.all([loadRecords(),loadTechs(),loadComisionesDB()]);
 
-  buildTabs();showTab('registro');
+  buildTabs();
+  if(currentLevel==='operador'){
+    showTab('operador');
+    const nameDisp=document.getElementById('op-name-display');
+    if(nameDisp)nameDisp.textContent=window._operadorName||'';
+    renderOpSvcList();
+    return;
+  }
+  showTab('registro');
   renderSvcSelector();renderTechSelector();
   ['calidad','proceso'].forEach(renderChk);
   document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
@@ -968,6 +1344,10 @@ async function startApp(){
 
 function buildTabs(){
   const bar=document.getElementById('tabs-bar');
+  if(currentLevel==='operador'){
+    bar.innerHTML='<button class="tab active" onclick="showTab('operador')" id="tabn-operador">📷 Mi servicio</button>';
+    return;
+  }
   const all=[
     {id:'registro',label:'📋 Registrar'},
     {id:'historial',label:'🕐 Historial'},
@@ -984,7 +1364,7 @@ function buildTabs(){
 }
 
 function showTab(name){
-  ['registro','historial','estadisticas','graficas','resumen','tecnicos','comisiones','config'].forEach(t=>{
+  ['registro','historial','estadisticas','graficas','resumen','tecnicos','comisiones','config','operador'].forEach(t=>{
     const el=document.getElementById('tab-'+t);if(el)el.style.display=t===name?'block':'none';
     const btn=document.getElementById('tabn-'+t);if(btn)btn.classList.toggle('active',t===name);
   });
@@ -1503,6 +1883,143 @@ function renderGraficas(){
       }
     });
   });
+}
+
+
+// ── OPERADOR ──
+let opSelectedSvc = '';
+let opFotosEntrada = [];
+let opFotosSalida = [];
+
+function checkOperadorPin(val){
+  const wrap = document.getElementById('op-name-wrap');
+  if(!wrap)return;
+  if(val.length>=4){
+    // populate name list from techs
+    const sel=document.getElementById('op-name-select');
+    if(sel&&sel.options.length<=1){
+      techs.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
+    }
+    wrap.style.display='flex';
+  } else {
+    wrap.style.display='none';
+  }
+}
+
+function renderOpSvcList(){
+  const el=document.getElementById('op-svc-list');
+  if(!el)return;
+  el.innerHTML=SERVICES_LIST.map(s=>`
+    <div onclick="selectOpSvc('${s}')" style="padding:10px 14px;cursor:pointer;font-size:13px;color:#222;border-bottom:1px solid #f0f0f0;background:${opSelectedSvc===s?'#FFF0EB':'#fff'}">${s}</div>
+  `).join('');
+}
+function selectOpSvc(s){
+  opSelectedSvc=s;
+  const lbl=document.getElementById('op-svc-label');
+  if(lbl){lbl.textContent=s;lbl.style.color='#111';}
+  toggleOpSvcDropdown();
+}
+function toggleOpSvcDropdown(){
+  const dd=document.getElementById('op-svc-dropdown');
+  if(!dd)return;
+  dd.style.display=dd.style.display==='block'?'none':'block';
+  renderOpSvcList();
+}
+
+function addPhotoPreview(file, gridId, type){
+  const grid=document.getElementById(gridId);
+  if(!grid)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const div=document.createElement('div');
+    div.style.cssText='aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative';
+    div.innerHTML=`<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
+    const addBtn=grid.querySelector('label');
+    grid.insertBefore(div,addBtn);
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleFotos(input, type){
+  const files=Array.from(input.files);
+  const gridId=type==='entrada'?'op-fotos-entrada-grid':'op-fotos-salida-grid';
+  files.forEach(f=>{
+    if(type==='entrada') opFotosEntrada.push(f);
+    else opFotosSalida.push(f);
+    addPhotoPreview(f,gridId,type);
+  });
+  input.value='';
+}
+
+async function uploadFotos(files, prefix){
+  const urls=[];
+  for(const file of files){
+    const ext=file.name.split('.').pop();
+    const path=`${prefix}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const {data,error}=await sb.storage.from('fotos-servicios').upload(path,file,{contentType:file.type});
+    if(!error){
+      const {data:urlData}=sb.storage.from('fotos-servicios').getPublicUrl(path);
+      urls.push(urlData.publicUrl);
+    }
+  }
+  return urls;
+}
+
+async function saveOperadorRecord(){
+  const vehicle=document.getElementById('op-vehicle')?.value.trim();
+  const nota=document.getElementById('op-nota')?.value.trim();
+  if(!opSelectedSvc){alert('Selecciona un servicio.');return;}
+  if(!vehicle){alert('Escribe el vehículo.');return;}
+
+  const statusEl=document.getElementById('op-upload-status');
+  if(statusEl)statusEl.style.display='block';
+
+  try{
+    // Upload photos
+    const urlsEntrada=await uploadFotos(opFotosEntrada,'entrada');
+    const urlsSalida=await uploadFotos(opFotosSalida,'salida');
+
+    const today=new Date().toISOString().split('T')[0];
+    const {error}=await sb.from('records').insert([{
+      svcs:JSON.stringify([opSelectedSvc]),
+      vehicle,
+      date:today,
+      notes:nota||'',
+      techs:JSON.stringify([window._operadorName||'Operador']),
+      tiempo:null,
+      chk:JSON.stringify({calidad:[false,false,false],proceso:[false,false,false]}),
+      fotos_entrada:JSON.stringify(urlsEntrada),
+      fotos_salida:JSON.stringify(urlsSalida),
+      nota_recepcion:nota||''
+    }]);
+
+    if(error)throw error;
+
+    // Reset
+    opSelectedSvc='';opFotosEntrada=[];opFotosSalida=[];
+    if(document.getElementById('op-vehicle'))document.getElementById('op-vehicle').value='';
+    if(document.getElementById('op-nota'))document.getElementById('op-nota').value='';
+    if(document.getElementById('op-svc-label')){document.getElementById('op-svc-label').textContent='Selecciona...';document.getElementById('op-svc-label').style.color='#888';}
+    document.getElementById('op-fotos-entrada-grid').innerHTML=`<label style="aspect-ratio:1;background:#E6F1FB;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #185FA5"><span style="color:#185FA5;font-size:22px">+</span><span style="font-size:10px;color:#185FA5">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'entrada')"></label>`;
+    document.getElementById('op-fotos-salida-grid').innerHTML=`<label style="aspect-ratio:1;background:#EAF3DE;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed #3B6D11"><span style="color:#3B6D11;font-size:22px">+</span><span style="font-size:10px;color:#3B6D11">Foto</span><input type="file" accept="image/*" multiple style="display:none" onchange="handleFotos(this,'salida')"></label>`;
+
+    if(statusEl)statusEl.style.display='none';
+    alert('✓ Servicio registrado correctamente.');
+    await loadRecords();
+  }catch(e){
+    if(statusEl)statusEl.style.display='none';
+    alert('Error al guardar: '+e.message);
+  }
+}
+
+// Update PIN config to include operador
+async function savePin(role){
+  const val=document.getElementById('pin-'+role+'-new').value.trim();
+  if(!val||val.length<4){alert('El PIN debe tener al menos 4 dígitos.');return;}
+  pins[role]=val;saveLocal('cd_pins',pins);
+  await savePinsDB();
+  document.getElementById('pin-'+role+'-new').value='';
+  alert('PIN actualizado.');
 }
 
 </script>
